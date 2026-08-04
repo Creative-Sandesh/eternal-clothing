@@ -3,6 +3,7 @@ import { createBrowserRouter } from "react-router-dom";
 import CustomerLayout from "../layouts/CustomerLayout";
 import AccountLayout from "../layouts/AccountLayout";
 import AdminLayout from "../layouts/AdminLayout";
+import ScrollToTop from "../components/ScrollToTop"
 const HomePage = lazy(() => import("../pages/customer/HomePage"));
 const ShopPage = lazy(() => import("../pages/customer/ShopPage"));
 const CollectionsPage = lazy(() => import("../pages/customer/CollectionsPage"));
@@ -59,7 +60,9 @@ const AnalyticsDashboard = lazy(() => import("../pages/admin/AnalyticsDashboard"
 const InventoryPage = lazy(() => import("../pages/admin/InventoryPage"));
 const UsersPage = lazy(() => import("../pages/admin/UsersPage"));
 const SettingsPage = lazy(() => import("../pages/admin/SettingsPage"));
-const router = createBrowserRouter([
+
+const router =  createBrowserRouter([
+   
   {
     Component: CustomerLayout,
     children: [
@@ -71,7 +74,7 @@ const router = createBrowserRouter([
       { path: "/new-arrivals", Component: NewArrivalsPage },
       { path: "/best-sellers", Component: BestSellersPage },
       { path: "/sale", Component: SalePage },
-      { path: "/products/:id", Component: ProductDetailPage },
+      { path: "/product/:id", Component: ProductDetailPage },
       { path: "/search", Component: SearchPage },
       { path: "/cart", Component: CartPage },
       { path: "/checkout", Component: CheckoutPage },
@@ -92,7 +95,8 @@ const router = createBrowserRouter([
       { path: "/forgot-password", Component: ForgotPasswordPage },
       { path: "/reset-password", Component: ResetPasswordPage },
       { path: "*", Component: NotFoundPage }
-    ]
+    ] 
+   
   },
   {
     Component: AccountLayout,
@@ -135,6 +139,7 @@ const router = createBrowserRouter([
     ]
   }
 ]);
+
 export {
   router
 };
