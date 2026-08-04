@@ -1,5 +1,6 @@
 import { useState, Suspense } from "react";
 import { NavLink, Outlet, Link } from "react-router-dom";
+import ScrollToTop from "../components/ScrollToTop"
 import {
   FiGrid,
   FiPackage,
@@ -51,6 +52,7 @@ function AccountLayout() {
       {
     /* Mobile header */
   }
+  <ScrollToTop />
       <div
     className="lg:hidden flex items-center justify-between px-6 py-4 border-b"
     style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa" }}
