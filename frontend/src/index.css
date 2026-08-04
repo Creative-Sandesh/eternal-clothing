@@ -1,0 +1,80 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Manrope:wght@300;400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-display: 'DM Serif Display', Georgia, serif;
+  --font-sans: 'Manrope', system-ui, sans-serif;
+  --font-mono: 'DM Mono', monospace;
+
+  --color-eternal-black: #0a0a0a;
+  --color-eternal-white: #fafafa;
+  --color-eternal-beige: #f0ebe2;
+  --color-eternal-beige-dark: #e0d9cc;
+  --color-eternal-green: #2d4a3e;
+  --color-eternal-green-light: #3d6355;
+  --color-eternal-stone: #8c8277;
+  --color-eternal-warm: #c9b99a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Manrope', system-ui, sans-serif;
+  background-color: #fafafa;
+  color: #0a0a0a;
+  line-height: 1.6;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #c9b99a; border-radius: 2px; }
+
+/* Selection */
+::selection { background: #2d4a3e; color: #fafafa; }
+
+/* Font utility */
+.font-display { font-family: 'DM Serif Display', Georgia, serif; }
+.font-mono { font-family: 'DM Mono', monospace; }
+
+/* Transitions */
+.transition-smooth { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Shimmer keyframe for Skeleton component */
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+/* Aspect ratios for product images */
+.aspect-product { aspect-ratio: 3/4; }
+.aspect-hero { aspect-ratio: 16/7; }
+
+/* Underline animation */
+.link-underline {
+  position: relative;
+  text-decoration: none;
+}
+.link-underline::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: currentColor;
+  transition: width 0.3s ease;
+}
+.link-underline:hover::after { width: 100%; }
