@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion";
 import {
@@ -9,13 +9,26 @@ import {
   FiArrowRight,
   FiChevronUp,
   FiStar,
-  FiPlay,
 } from "react-icons/fi";
 import { products, categories, collections } from "../../data/products";
 import { useCart } from "../../context/CartContext";
 
 // ----------------------------------------------------------------------
-// Animation variants & helpers
+// Custom hooks
+// ----------------------------------------------------------------------
+const useMediaQuery = (query) => {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const handler = (e) => setMatches(e.matches);
+    mql.addEventListener("change", handler);
+    return () => mql.removeEventListener("change", handler);
+  }, [query]);
+  return matches;
+};
+
+// ----------------------------------------------------------------------
+// Animation variants
 // ----------------------------------------------------------------------
 const fadeUp = {
   hidden: { opacity: 0, y: 40 },
@@ -29,12 +42,9 @@ const stagger = {
 
 const viewportOpts = { once: true, margin: "-100px 0px -80px 0px" };
 
-const heartAnimation = {
-  scale: [1, 1.3, 1],
-  transition: { duration: 0.3 },
-};
-
-// Sample data for new sections (you can move to data/products later)
+// ----------------------------------------------------------------------
+// Sample data
+// ----------------------------------------------------------------------
 const testimonials = [
   {
     id: 1,
@@ -59,14 +69,7 @@ const testimonials = [
   },
 ];
 
-const pressLogos = [
-  "VOGUE",
-  "ELLE",
-  "HARPER'S BAZAAR",
-  "GOOP",
-  "MONOCLE",
-  "WALLPAPER",
-];
+const pressLogos = ["VOGUE", "ELLE", "HARPER'S BAZAAR", "GOOP", "MONOCLE", "WALLPAPER"];
 
 const heroSlides = [
   {
@@ -81,36 +84,222 @@ const heroSlides = [
   },
 ];
 
+const instagramImages = [
+  "https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=400&h=400&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1506629082955-511b1aa562c8?w=400&h=400&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&h=400&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400&h=400&fit=crop&auto=format",
+  "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=400&fit=crop&auto=format",
+];
+
 // ----------------------------------------------------------------------
-// Component
+// ProductCard (reusable, mobile‑aware, fixed dropdown visibility)
+// ----------------------------------------------------------------------
+const ProductCard = ({ product, isMobile }) => {
+  const { addItem } = useCart();
+  const [hovered, setHovered] = useState(false);
+  const [wishlist, setWishlist] = useState(() => {
+    try {
+      return new Set(JSON.parse(localStorage.getItem("eternal_wishlist") || "[]"));
+    } catch {
+      return new Set();
+    }
+  });
+  const [showToast, setShowToast] = useState(false);
+  const [quickAddSize, setQuickAddSize] = useState(product.sizes[0]);
+
+  useEffect(() => {
+    localStorage.setItem("eternal_wishlist", JSON.stringify([...wishlist]));
+  }, [wishlist]);
+
+  const toggleWishlist = (e) => {
+    e.preventDefault();
+    // No need for stopPropagation – the Link's onClick will see the button and prevent navigation
+    setWishlist((prev) => {
+      const next = new Set(prev);
+      next.has(product.id) ? next.delete(product.id) : next.add(product.id);
+      return next;
+    });
+  };
+
+  const handleAdd = (e) => {
+    e.preventDefault();
+    // No need for stopPropagation – the Link's onClick will see the button and prevent navigation
+    addItem({
+      productId: product.id,
+      name: product.name,
+      price: product.price,
+      size: quickAddSize,
+      color: product.colors[0].name,
+      image: product.images[0],
+      quantity: 1,
+    });
+    setShowToast(true);
+    setTimeout(() => setShowToast(false), 2000);
+  };
+
+  const displayImage = hovered && product.images[1] ? product.images[1] : product.images[0];
+  const showQuickAdd = isMobile || hovered;
+
+  return (
+    <div className="group relative">
+      <AnimatePresence>
+        {showToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-eternal-black text-eternal-white font-sans text-xs px-6 py-3 shadow-2xl tracking-wider uppercase"
+          >
+            Added to bag ✓
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <Link
+        to={`/product/${product.id}`}
+        className="block"
+        onClick={(e) => {
+          if (e.target.closest('select, button')) {
+            e.preventDefault();
+          }
+        }}
+      >
+        <div
+          className="relative overflow-hidden aspect-[3/4] bg-eternal-stone/10"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+        >
+          <img
+            src={displayImage}
+            alt={product.name}
+            className="w-full h-full object-cover transition-all duration-700 ease-out"
+            loading="lazy"
+          />
+
+          <div className="absolute top-3 left-3 flex flex-col gap-1">
+            {product.isNew && (
+              <span className="font-sans text-[10px] font-bold tracking-widest uppercase bg-eternal-black text-eternal-white px-2 py-1">
+                New
+              </span>
+            )}
+            {product.isSale && (
+              <span className="font-sans text-[10px] font-bold tracking-widest uppercase bg-eternal-green text-eternal-white px-2 py-1">
+                Sale
+              </span>
+            )}
+          </div>
+
+          <button
+            onClick={toggleWishlist}
+            className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center bg-eternal-white/80 backdrop-blur-sm hover:bg-eternal-white transition-colors focus:outline-none focus:ring-2 focus:ring-eternal-black"
+            aria-label={wishlist.has(product.id) ? "Remove from wishlist" : "Add to wishlist"}
+          >
+            <FiHeart
+              size={14}
+              className={
+                wishlist.has(product.id)
+                  ? "fill-eternal-black text-eternal-black"
+                  : "text-eternal-black"
+              }
+            />
+          </button>
+
+          {product.colors && product.colors.length > 1 && (
+            <div className="absolute bottom-20 left-3 flex gap-1.5">
+              {product.colors.map((c) => (
+                <button
+                  key={c.name}
+                  className="w-4 h-4 rounded-full border border-eternal-white shadow-sm hover:scale-110 transition-transform focus:outline-none focus:ring-2 focus:ring-eternal-black"
+                  style={{ backgroundColor: c.hex }}
+                  title={c.name}
+                  onClick={(e) => e.preventDefault()} // Only prevent default, no stopPropagation needed
+                />
+              ))}
+            </div>
+          )}
+
+          <div
+            className={`absolute bottom-0 left-0 right-0 transition-transform duration-300 ${isMobile ? "translate-y-0" : "translate-y-full group-hover:translate-y-0"
+              }`}
+          >
+            <div className="bg-eternal-black/95 backdrop-blur-sm p-3 flex items-center gap-2">
+              <select
+                value={quickAddSize}
+                onChange={(e) => setQuickAddSize(e.target.value)}
+                style={{ colorScheme: "dark" }}
+                className="bg-eternal-black text-eternal-white text-xs font-sans border border-eternal-white/40 px-2 py-1.5 flex-1 outline-none focus:border-eternal-white"
+              >
+                {product.sizes.map((size) => (
+                  <option key={size} value={size}>
+                    {size}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleAdd}
+                className="bg-eternal-white text-eternal-black font-sans text-xs font-semibold tracking-widest uppercase px-3 py-1.5 flex items-center gap-1.5 hover:bg-eternal-beige transition-colors focus:outline-none focus:ring-2 focus:ring-eternal-black"
+              >
+                <FiShoppingBag size={13} />
+                Add
+              </button>
+            </div>
+          </div>
+        </div>
+      </Link>
+
+      <div className="mt-3">
+        <Link to={`/product/${product.id}`}>
+          <p className="font-display text-eternal-black text-lg leading-snug hover:text-eternal-stone transition-colors">
+            {product.name}
+          </p>
+        </Link>
+        <div className="flex items-center gap-2 mt-1">
+          <span className="font-sans text-eternal-stone text-sm">${product.price}</span>
+          {product.originalPrice && (
+            <span className="font-sans text-eternal-stone/60 text-sm line-through">
+              ${product.originalPrice}
+            </span>
+          )}
+        </div>
+        {product.colors && product.colors.length > 1 && (
+          <span className="text-[10px] text-eternal-stone mt-0.5 block">
+            +{product.colors.length - 1} colors
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ----------------------------------------------------------------------
+// HomePage
 // ----------------------------------------------------------------------
 function HomePage() {
-  const { addItem } = useCart();
   const [email, setEmail] = useState("");
   const [subscribed, setSubscribed] = useState(false);
-  const [hoveredProduct, setHoveredProduct] = useState(null);
-  const [wishlist, setWishlist] = useState(new Set());
   const [heroIndex, setHeroIndex] = useState(0);
   const [showBackToTop, setShowBackToTop] = useState(false);
+  const [isAtStart, setIsAtStart] = useState(true);
+  const [isAtEnd, setIsAtEnd] = useState(false);
 
-  // Products
+  const isMobile = useMediaQuery("(max-width: 768px)");
+
   const featuredProducts = products.slice(0, 4);
   const newArrivals = products.filter((p) => p.isNew).slice(0, 6);
-  const displayNewArrivals =
-    newArrivals.length >= 4 ? newArrivals : products.slice(0, 4);
+  const displayNewArrivals = newArrivals.length >= 4 ? newArrivals : products.slice(0, 4);
 
-  // Collections
   const firstTwoCollections = collections.slice(0, 2);
 
-  // Parallax ref for collection banner
   const collectionRef = useRef(null);
   const { scrollYProgress } = useScroll({
     target: collectionRef,
     offset: ["start end", "end start"],
   });
-  const parallaxY = useTransform(scrollYProgress, [0, 1], ["0%", "10%"]);
+  const parallaxY = useTransform(scrollYProgress, [0, 1], ["0%", "8%"]);
 
-  // Hero slides auto-advance
+  // Hero auto‑advance
   useEffect(() => {
     const timer = setInterval(() => {
       setHeroIndex((prev) => (prev + 1) % heroSlides.length);
@@ -118,33 +307,58 @@ function HomePage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Back to top visibility
+  // Preload first hero image
   useEffect(() => {
-    const handleScroll = () => {
-      setShowBackToTop(window.scrollY > 800);
-    };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+    const link = document.createElement("link");
+    link.rel = "preload";
+    link.as = "image";
+    link.href = heroSlides[0].img;
+    document.head.appendChild(link);
+    return () => document.head.removeChild(link);
   }, []);
 
-  // ---- Handlers ----
-  const toggleWishlist = (id) => {
-    setWishlist((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
+  // Back‑to‑top via IntersectionObserver
+  useEffect(() => {
+    const sentinel = document.createElement("div");
+    sentinel.style.position = "absolute";
+    sentinel.style.top = "800px";
+    sentinel.style.height = "1px";
+    document.body.appendChild(sentinel);
+    const observer = new IntersectionObserver(
+      ([entry]) => setShowBackToTop(!entry.isIntersecting),
+      { threshold: 0 }
+    );
+    observer.observe(sentinel);
+    return () => {
+      observer.disconnect();
+      document.body.removeChild(sentinel);
+    };
+  }, []);
 
-  const handleQuickAdd = (p, size) => {
-    addItem({
-      productId: p.id,
-      name: p.name,
-      price: p.price,
-      size: size || p.sizes[0],
-      color: p.colors[0].name,
-      image: p.images[0],
-      quantity: 1,
+  // Carousel edge detection
+  const carouselRef = useRef(null);
+  const checkCarouselEdges = useCallback(() => {
+    const el = carouselRef.current;
+    if (!el) return;
+    setIsAtStart(el.scrollLeft <= 0);
+    setIsAtEnd(el.scrollLeft + el.clientWidth >= el.scrollWidth - 2);
+  }, []);
+
+  useEffect(() => {
+    const el = carouselRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", checkCarouselEdges, { passive: true });
+    checkCarouselEdges();
+    return () => el.removeEventListener("scroll", checkCarouselEdges);
+  }, [checkCarouselEdges]);
+
+  const scrollCarousel = (direction) => {
+    const el = carouselRef.current;
+    if (!el) return;
+    const scrollAmount = 280;
+    el.scrollBy({
+      left: direction === "left" ? -scrollAmount : scrollAmount,
+      behavior: "smooth",
     });
   };
 
@@ -156,36 +370,19 @@ function HomePage() {
     }
   };
 
-  const instagramImages = [
-    "https://images.unsplash.com/photo-1469334031218-e382a71b716b?w=400&h=400&fit=crop&auto=format",
-    "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&h=400&fit=crop&auto=format",
-    "https://images.unsplash.com/photo-1506629082955-511b1aa562c8?w=400&h=400&fit=crop&auto=format",
-    "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&h=400&fit=crop&auto=format",
-    "https://images.unsplash.com/photo-1483985988355-763728e1935b?w=400&h=400&fit=crop&auto=format",
-    "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=400&fit=crop&auto=format",
-  ];
-
-  // New Arrivals carousel controls
-  const carouselRef = useRef(null);
-  const scrollCarousel = (direction) => {
-    if (carouselRef.current) {
-      const scrollAmount = 280; // card width + gap
-      carouselRef.current.scrollBy({
-        left: direction === "left" ? -scrollAmount : scrollAmount,
-        behavior: "smooth",
-      });
-    }
-  };
-
   return (
     <div className="bg-eternal-white">
       {/* ── 1. HERO SLIDESHOW ── */}
-      <section className="relative min-h-screen flex items-end overflow-hidden">
+      <section
+        className="relative min-h-screen flex items-end overflow-hidden"
+        aria-roledescription="carousel"
+        aria-label="Featured collections"
+      >
         <AnimatePresence mode="wait">
           <motion.img
             key={heroSlides[heroIndex].img}
             src={heroSlides[heroIndex].img}
-            alt="Eternal editorial hero"
+            alt=""
             className="absolute inset-0 w-full h-full object-cover"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -193,9 +390,12 @@ function HomePage() {
             transition={{ duration: 1.2, ease: "easeInOut" }}
           />
         </AnimatePresence>
-        <div className="absolute inset-0 bg-eternal-black/50" />
+        <div className="absolute inset-0 bg-eternal-black/55" />
 
-        {/* Scroll indicator */}
+        <div className="sr-only" aria-live="polite">
+          Slide {heroIndex + 1} of {heroSlides.length}: {heroSlides[heroIndex].title}
+        </div>
+
         <motion.div
           className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2"
           initial={{ opacity: 0, y: 10 }}
@@ -214,7 +414,6 @@ function HomePage() {
           </motion.div>
         </motion.div>
 
-        {/* Text block */}
         <motion.div
           className="relative z-10 px-8 md:px-16 pb-16 md:pb-24 max-w-3xl"
           key={heroSlides[heroIndex].title}
@@ -231,26 +430,25 @@ function HomePage() {
           <div className="mt-10 flex flex-wrap gap-4">
             <Link
               to="/shop"
-              className="inline-block bg-eternal-white text-eternal-black font-sans text-sm font-semibold tracking-widest uppercase px-8 py-4 hover:bg-eternal-beige transition-colors duration-300"
+              className="inline-block bg-eternal-white text-eternal-black font-sans text-sm font-semibold tracking-widest uppercase px-8 py-4 hover:bg-eternal-beige transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-eternal-white"
             >
               Shop Collection
             </Link>
             <Link
               to="/new-arrivals"
-              className="inline-block border border-eternal-white text-eternal-white font-sans text-sm font-semibold tracking-widest uppercase px-8 py-4 hover:bg-eternal-white/10 transition-colors duration-300"
+              className="inline-block border border-eternal-white text-eternal-white font-sans text-sm font-semibold tracking-widest uppercase px-8 py-4 hover:bg-eternal-white/10 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-eternal-white"
             >
               New Arrivals
             </Link>
           </div>
         </motion.div>
 
-        {/* Slide navigation dots */}
         <div className="absolute bottom-8 right-8 md:right-16 z-10 flex gap-2">
           {heroSlides.map((_, i) => (
             <button
               key={i}
               onClick={() => setHeroIndex(i)}
-              className={`w-2 h-2 rounded-full transition-all duration-300 ${i === heroIndex ? "bg-eternal-white scale-125" : "bg-eternal-white/40"
+              className={`w-2 h-2 rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-eternal-white ${i === heroIndex ? "bg-eternal-white scale-125" : "bg-eternal-white/40"
                 }`}
               aria-label={`Go to slide ${i + 1}`}
             />
@@ -269,10 +467,8 @@ function HomePage() {
         >
           Shop by Category
         </motion.h2>
-
         <div className="grid grid-cols-2 md:grid-cols-4 auto-rows-[200px] md:auto-rows-[240px] gap-3">
           {categories.map((cat, i) => {
-            // First category gets a larger card that spans 2 rows & 2 columns on desktop
             const isFeatured = i === 0;
             return (
               <motion.div
@@ -282,20 +478,17 @@ function HomePage() {
                 whileInView="visible"
                 viewport={viewportOpts}
                 transition={{ duration: 0.55, delay: i * 0.08 }}
-                className={
-                  isFeatured
-                    ? "col-span-2 md:col-span-2 row-span-2"
-                    : "col-span-1"
-                }
+                className={isFeatured ? "col-span-2 md:col-span-2 row-span-2" : "col-span-1"}
               >
                 <Link
                   to={`/shop?category=${cat.slug}`}
-                  className="group relative flex overflow-hidden w-full h-full"
+                  className="group relative flex overflow-hidden w-full h-full focus:outline-none focus:ring-2 focus:ring-eternal-black focus:ring-offset-2"
                 >
                   <img
                     src={cat.image}
                     alt={cat.name}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    loading="lazy"
                   />
                   <div className="absolute inset-0 bg-eternal-black/25 group-hover:bg-eternal-black/45 transition-colors duration-500" />
                   <div className="absolute bottom-0 left-0 p-5">
@@ -306,7 +499,6 @@ function HomePage() {
                       {cat.count} pieces
                     </p>
                   </div>
-                  {/* Hover CTA */}
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                     <span className="bg-eternal-white text-eternal-black font-sans text-xs font-semibold tracking-[0.2em] uppercase px-6 py-3 shadow-2xl">
                       Explore {cat.name}
@@ -319,7 +511,7 @@ function HomePage() {
         </div>
       </section>
 
-      {/* ── 3. FEATURED PRODUCTS (with swatches, size quick-add) ── */}
+      {/* ── 3. FEATURED PRODUCTS ── */}
       <section className="bg-eternal-beige py-20 px-8 md:px-16">
         <motion.div
           variants={fadeUp}
@@ -331,7 +523,7 @@ function HomePage() {
           <h2 className="font-display text-3xl md:text-4xl text-eternal-black">The Essentials</h2>
           <Link
             to="/shop"
-            className="font-sans text-sm text-eternal-stone hover:text-eternal-black transition-colors tracking-wider uppercase"
+            className="font-sans text-sm text-eternal-stone hover:text-eternal-black transition-colors tracking-wider uppercase focus:outline-none focus:ring-2 focus:ring-eternal-black"
           >
             View All →
           </Link>
@@ -345,130 +537,8 @@ function HomePage() {
               whileInView="visible"
               viewport={viewportOpts}
               transition={{ duration: 0.55, delay: i * 0.1 }}
-              className="group"
             >
-              <Link to={`/product/${p.id}`} className="block">
-                <div
-                  className="relative overflow-hidden aspect-[3/4] bg-eternal-stone/10"
-                  onMouseEnter={() => setHoveredProduct(p.id)}
-                  onMouseLeave={() => setHoveredProduct(null)}
-                >
-                  <img
-                    src={
-                      hoveredProduct === p.id && p.images[1]
-                        ? p.images[1]
-                        : p.images[0]
-                    }
-                    alt={p.name}
-                    className="w-full h-full object-cover transition-all duration-700 ease-out"
-                  />
-
-                  {/* Badges */}
-                  <div className="absolute top-3 left-3 flex flex-col gap-1">
-                    {p.isNew && (
-                      <span className="font-sans text-[10px] font-bold tracking-widest uppercase bg-eternal-black text-eternal-white px-2 py-1">
-                        New
-                      </span>
-                    )}
-                    {p.isSale && (
-                      <span className="font-sans text-[10px] font-bold tracking-widest uppercase bg-eternal-green text-eternal-white px-2 py-1">
-                        Sale
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Wishlist + animation */}
-                  <motion.button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      toggleWishlist(p.id);
-                    }}
-                    className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center bg-eternal-white/80 backdrop-blur-sm hover:bg-eternal-white transition-colors"
-                    aria-label="Add to wishlist"
-                    whileTap={heartAnimation}
-                  >
-                    <FiHeart
-                      size={14}
-                      className={
-                        wishlist.has(p.id)
-                          ? "fill-eternal-black text-eternal-black"
-                          : "text-eternal-black"
-                      }
-                    />
-                  </motion.button>
-
-                  {/* Color swatches (if >1 color) */}
-                  {p.colors && p.colors.length > 1 && (
-                    <div className="absolute bottom-20 left-3 flex gap-1.5">
-                      {p.colors.map((c, idx) => (
-                        <button
-                          key={c.name}
-                          className="w-4 h-4 rounded-full border border-eternal-white shadow-sm hover:scale-110 transition-transform"
-                          style={{ backgroundColor: c.hex }}
-                          title={c.name}
-                          onClick={(e) => {
-                            e.preventDefault();
-                            // here you'd update the displayed image or color state
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Quick add panel with size selection */}
-                  <div className="absolute bottom-0 left-0 right-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-                    <div className="bg-eternal-black/95 backdrop-blur-sm p-3 flex items-center gap-2">
-                      <select
-                        className="bg-transparent text-eternal-white text-xs font-sans border border-eternal-white/40 px-2 py-1.5 flex-1 outline-none"
-                        onClick={(e) => e.preventDefault()}
-                        onChange={(e) => {
-                          // size selected
-                        }}
-                      >
-                        {p.sizes.map((size) => (
-                          <option key={size} value={size}>
-                            {size}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={(e) => {
-                          e.preventDefault();
-                          const select = e.currentTarget.previousElementSibling;
-                          handleQuickAdd(p, select.value);
-                        }}
-                        className="bg-eternal-white text-eternal-black font-sans text-xs font-semibold tracking-widest uppercase px-3 py-1.5 flex items-center gap-1.5 hover:bg-eternal-beige transition-colors"
-                      >
-                        <FiShoppingBag size={13} />
-                        Add
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-
-              {/* Product info */}
-              <div className="mt-3">
-                <Link to={`/product/${p.id}`}>
-                  <p className="font-display text-eternal-black text-lg leading-snug hover:text-eternal-stone transition-colors">
-                    {p.name}
-                  </p>
-                </Link>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="font-sans text-eternal-stone text-sm">${p.price}</span>
-                  {p.originalPrice && (
-                    <span className="font-sans text-eternal-stone/60 text-sm line-through">
-                      ${p.originalPrice}
-                    </span>
-                  )}
-                </div>
-                {/* "More colors" hint */}
-                {p.colors && p.colors.length > 1 && (
-                  <span className="text-[10px] text-eternal-stone mt-0.5 block">
-                    +{p.colors.length - 1} colors
-                  </span>
-                )}
-              </div>
+              <ProductCard product={p} isMobile={isMobile} />
             </motion.div>
           ))}
         </div>
@@ -483,19 +553,15 @@ function HomePage() {
             initial="hidden"
             whileInView="visible"
             viewport={viewportOpts}
-            className={`flex flex-col md:flex-row min-h-[480px] ${i === 1 ? "md:flex-row-reverse" : ""
-              }`}
+            className={`flex flex-col md:flex-row min-h-[480px] ${i === 1 ? "md:flex-row-reverse" : ""}`}
           >
-            {/* Text panel */}
             <div
               className={`flex-1 flex flex-col justify-center px-10 md:px-20 py-16 ${i === 0
                   ? "bg-eternal-green text-eternal-white"
                   : "bg-eternal-beige text-eternal-black"
                 }`}
             >
-              <p className="font-sans text-xs tracking-widest uppercase mb-4 opacity-60">
-                Collection
-              </p>
+              <p className="font-sans text-xs tracking-widest uppercase mb-4 opacity-60">Collection</p>
               <h2 className="font-display text-4xl md:text-5xl leading-tight mb-5">{col.name}</h2>
               <p
                 className={`font-sans text-sm md:text-base leading-relaxed max-w-sm mb-8 ${i === 0 ? "text-eternal-white/70" : "text-eternal-stone"
@@ -508,19 +574,18 @@ function HomePage() {
                 className={`inline-flex items-center font-sans text-sm font-semibold tracking-widest uppercase gap-2 group ${i === 0
                     ? "text-eternal-white border-b border-eternal-white/40 pb-1 hover:border-eternal-white"
                     : "text-eternal-black border-b border-eternal-black/40 pb-1 hover:border-eternal-black"
-                  } transition-colors w-fit`}
+                  } transition-colors w-fit focus:outline-none focus:ring-2 focus:ring-eternal-white`}
               >
                 Explore
               </Link>
             </div>
-
-            {/* Image panel with parallax */}
             <div className="flex-1 overflow-hidden min-h-[300px] relative">
               <motion.img
                 src={col.image}
                 alt={col.name}
                 className="w-full h-full object-cover absolute inset-0"
                 style={{ y: parallaxY, scale: 1.05 }}
+                loading="lazy"
               />
             </div>
           </motion.div>
@@ -540,22 +605,23 @@ function HomePage() {
           <div className="flex gap-3 items-center">
             <Link
               to="/new-arrivals"
-              className="font-sans text-sm text-eternal-stone hover:text-eternal-black transition-colors tracking-wider uppercase hidden md:inline"
+              className="font-sans text-sm text-eternal-stone hover:text-eternal-black transition-colors tracking-wider uppercase hidden md:inline focus:outline-none focus:ring-2 focus:ring-eternal-black"
             >
               View All →
             </Link>
-            {/* Arrow navigation */}
             <div className="flex gap-1">
               <button
                 onClick={() => scrollCarousel("left")}
-                className="w-8 h-8 border border-eternal-stone/30 text-eternal-black flex items-center justify-center hover:bg-eternal-black hover:text-eternal-white transition-colors"
+                disabled={isAtStart}
+                className="w-8 h-8 border border-eternal-stone/30 text-eternal-black flex items-center justify-center hover:bg-eternal-black hover:text-eternal-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-eternal-black"
                 aria-label="Scroll left"
               >
                 <FiArrowLeft size={16} />
               </button>
               <button
                 onClick={() => scrollCarousel("right")}
-                className="w-8 h-8 border border-eternal-stone/30 text-eternal-black flex items-center justify-center hover:bg-eternal-black hover:text-eternal-white transition-colors"
+                disabled={isAtEnd}
+                className="w-8 h-8 border border-eternal-stone/30 text-eternal-black flex items-center justify-center hover:bg-eternal-black hover:text-eternal-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-eternal-black"
                 aria-label="Scroll right"
               >
                 <FiArrowRight size={16} />
@@ -567,6 +633,8 @@ function HomePage() {
         <div
           ref={carouselRef}
           className="flex gap-6 overflow-x-auto no-scrollbar scroll-smooth pr-4"
+          role="list"
+          aria-label="New arrivals"
         >
           {displayNewArrivals.map((p, i) => (
             <motion.div
@@ -576,51 +644,10 @@ function HomePage() {
               whileInView="visible"
               viewport={viewportOpts}
               transition={{ duration: 0.55, delay: i * 0.08 }}
-              className="group w-64 flex-shrink-0"
+              className="w-64 flex-shrink-0"
+              role="listitem"
             >
-              <Link to={`/product/${p.id}`} className="block">
-                <div
-                  className="relative overflow-hidden aspect-[3/4] bg-eternal-stone/10"
-                  onMouseEnter={() => setHoveredProduct(`new-${p.id}`)}
-                  onMouseLeave={() => setHoveredProduct(null)}
-                >
-                  <img
-                    src={
-                      hoveredProduct === `new-${p.id}` && p.images[1]
-                        ? p.images[1]
-                        : p.images[0]
-                    }
-                    alt={p.name}
-                    className="w-full h-full object-cover transition-all duration-500"
-                  />
-                  {p.isNew && (
-                    <span className="absolute top-3 left-3 font-sans text-[10px] font-bold tracking-widest uppercase bg-eternal-black text-eternal-white px-2 py-1">
-                      New
-                    </span>
-                  )}
-                  {/* Quick add on hover */}
-                  <div className="absolute bottom-0 left-0 right-0 translate-y-full group-hover:translate-y-0 transition-transform duration-300">
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        handleQuickAdd(p);
-                      }}
-                      className="w-full bg-eternal-black text-eternal-white font-sans text-xs font-semibold tracking-widest uppercase py-3 flex items-center justify-center gap-2 hover:bg-eternal-green transition-colors duration-300"
-                    >
-                      <FiShoppingBag size={13} />
-                      Quick Add
-                    </button>
-                  </div>
-                </div>
-              </Link>
-              <div className="mt-3">
-                <Link to={`/product/${p.id}`}>
-                  <p className="font-display text-eternal-black text-base leading-snug hover:text-eternal-stone transition-colors">
-                    {p.name}
-                  </p>
-                </Link>
-                <span className="font-sans text-eternal-stone text-sm">${p.price}</span>
-              </div>
+              <ProductCard product={p} isMobile={isMobile} />
             </motion.div>
           ))}
         </div>
@@ -660,6 +687,7 @@ function HomePage() {
                 src={t.avatar}
                 alt={t.name}
                 className="w-10 h-10 rounded-full object-cover mb-2"
+                loading="lazy"
               />
               <span className="font-sans text-xs text-eternal-stone tracking-wider uppercase">
                 {t.name}
@@ -669,7 +697,7 @@ function HomePage() {
         </div>
       </section>
 
-      {/* ── 7. PRESS & RECOGNITION ── */}
+      {/* ── 7. PRESS ── */}
       <section className="bg-eternal-beige py-14 px-8 md:px-16">
         <p className="text-center font-sans text-xs tracking-[0.25em] uppercase text-eternal-stone mb-8">
           As seen in
@@ -686,7 +714,7 @@ function HomePage() {
         </div>
       </section>
 
-      {/* ── 8. INSTAGRAM SHOPPABLE GRID ── */}
+      {/* ── 8. INSTAGRAM GRID ── */}
       <section className="bg-eternal-white py-20 px-8 md:px-16">
         <motion.h2
           variants={fadeUp}
@@ -712,6 +740,7 @@ function HomePage() {
                 src={src}
                 alt={`Eternal editorial ${i + 1}`}
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                loading="lazy"
               />
               <div className="absolute inset-0 bg-eternal-black/0 group-hover:bg-eternal-black/40 transition-colors duration-300 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100">
                 <FiInstagram size={28} className="text-eternal-white mb-2" />
@@ -724,7 +753,7 @@ function HomePage() {
         </div>
       </section>
 
-      {/* ── 9. ABOUT STRIP (VALUES) ── */}
+      {/* ── 9. ABOUT STRIP ── */}
       <section className="bg-eternal-black py-20 px-8 md:px-16">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10 md:gap-16">
           {[
@@ -766,57 +795,41 @@ function HomePage() {
           viewport={viewportOpts}
           className="max-w-lg mx-auto text-center"
         >
-          <motion.h2
-            variants={fadeUp}
-            className="font-display text-4xl md:text-5xl text-eternal-black mb-4"
-          >
+          <motion.h2 variants={fadeUp} className="font-display text-4xl md:text-5xl text-eternal-black mb-4">
             Stay in the loop
           </motion.h2>
-          <motion.p
-            variants={fadeUp}
-            className="font-sans text-eternal-stone text-sm mb-10"
-          >
+          <motion.p variants={fadeUp} className="font-sans text-eternal-stone text-sm mb-10">
             New arrivals, editorial stories, and access to exclusive drops.
           </motion.p>
           {subscribed ? (
-            <motion.p
-              variants={fadeUp}
-              className="font-display text-xl text-eternal-black"
-            >
+            <motion.p variants={fadeUp} className="font-display text-xl text-eternal-black">
               Thank you for subscribing.
             </motion.p>
           ) : (
-            <motion.form
-              variants={fadeUp}
-              onSubmit={handleSubscribe}
-              className="flex flex-col sm:flex-row gap-0 border-b border-eternal-stone"
-            >
+            <motion.form variants={fadeUp} onSubmit={handleSubscribe} className="flex flex-col sm:flex-row gap-0 border-b border-eternal-stone">
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Your email address"
-                className="flex-1 bg-transparent font-sans text-sm text-eternal-black placeholder:text-eternal-stone/60 outline-none py-3 px-0"
+                className="flex-1 bg-transparent font-sans text-sm text-eternal-black placeholder:text-eternal-stone/60 outline-none py-3 px-0 focus:placeholder-transparent"
               />
               <button
                 type="submit"
-                className="bg-eternal-black text-eternal-white font-sans text-xs font-semibold tracking-widest uppercase px-8 py-3 hover:bg-eternal-green transition-colors duration-300 flex-shrink-0"
+                className="bg-eternal-black text-eternal-white font-sans text-xs font-semibold tracking-widest uppercase px-8 py-3 hover:bg-eternal-green transition-colors duration-300 flex-shrink-0 focus:outline-none focus:ring-2 focus:ring-eternal-black"
               >
                 Subscribe
               </button>
             </motion.form>
           )}
-          <motion.p
-            variants={fadeUp}
-            className="font-sans text-eternal-stone text-xs mt-5"
-          >
+          <motion.p variants={fadeUp} className="font-sans text-eternal-stone text-xs mt-5">
             We respect your privacy. Unsubscribe at any time. No spam — ever.
           </motion.p>
         </motion.div>
       </section>
 
-      {/* ── BACK TO TOP ── */}
+      {/* BACK TO TOP */}
       <AnimatePresence>
         {showBackToTop && (
           <motion.button
@@ -824,7 +837,7 @@ function HomePage() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
             onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            className="fixed bottom-6 right-6 z-50 w-10 h-10 bg-eternal-black text-eternal-white flex items-center justify-center shadow-lg hover:bg-eternal-green transition-colors"
+            className="fixed bottom-6 right-6 z-50 w-10 h-10 bg-eternal-black text-eternal-white flex items-center justify-center shadow-lg hover:bg-eternal-green transition-colors focus:outline-none focus:ring-2 focus:ring-eternal-white"
             aria-label="Back to top"
           >
             <FiChevronUp size={20} />
