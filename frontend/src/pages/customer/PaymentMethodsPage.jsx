@@ -39,12 +39,12 @@ function PaymentMethodsPage() {
     }, 1500);
   }
   return <div>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-8">
         <h1 className="font-display text-3xl" style={{ color: "#0a0a0a" }}>Payment Methods</h1>
         <button
     type="button"
     onClick={() => setShowForm(true)}
-    className="flex items-center gap-2 px-5 py-2.5 text-xs tracking-widest uppercase transition-all hover:bg-[#2d4a3e]"
+    className="flex items-center justify-center gap-2 px-5 py-2.5 text-xs tracking-widest uppercase transition-all hover:bg-[#2d4a3e] w-full sm:w-auto"
     style={{ backgroundColor: "#0a0a0a", color: "#fafafa", fontFamily: "Manrope, sans-serif" }}
   >
           <FiPlus size={14} />
@@ -60,7 +60,7 @@ function PaymentMethodsPage() {
         <div className="flex flex-col gap-3">
           {cards.map((card) => <div
     key={card.id}
-    className="flex items-center gap-4 p-4 border"
+    className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 p-4 border"
     style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa", fontFamily: "Manrope, sans-serif" }}
   >
               {
@@ -90,7 +90,7 @@ function PaymentMethodsPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 flex-shrink-0">
+              <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
                 {!card.isDefault && <button
     type="button"
     onClick={() => setDefault(card.id)}

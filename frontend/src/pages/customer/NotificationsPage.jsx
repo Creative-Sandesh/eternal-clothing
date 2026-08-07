@@ -34,7 +34,7 @@ function NotificationsPage() {
       {
     /* Header */
   }
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-8">
         <div>
           <h1 className="font-display text-3xl mb-1" style={{ color: "#0a0a0a" }}>Notifications</h1>
           {unreadCount > 0 && <span className="text-sm" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>
@@ -44,7 +44,7 @@ function NotificationsPage() {
         {unreadCount > 0 && <button
     type="button"
     onClick={markAllRead}
-    className="flex items-center gap-2 px-4 py-2 text-xs tracking-widest uppercase border transition-all hover:bg-[#0a0a0a] hover:text-[#fafafa]"
+    className="flex items-center justify-center gap-2 px-4 py-2 text-xs tracking-widest uppercase border transition-all hover:bg-[#0a0a0a] hover:text-[#fafafa] w-full sm:w-auto"
     style={{ borderColor: "#0a0a0a", color: "#0a0a0a", fontFamily: "Manrope, sans-serif" }}
   >
             <FiCheck size={13} />
@@ -55,7 +55,7 @@ function NotificationsPage() {
       {
     /* Filter tabs */
   }
-      <div className="flex gap-0 mb-6 border-b" style={{ borderColor: "#f0ebe2" }}>
+      <div className="flex gap-0 mb-6 border-b overflow-x-auto" style={{ borderColor: "#f0ebe2" }}>
         {tabs.map((tab) => {
     const count = tab === "All" ? notifications.length : notifications.filter((n) => n.category === tab).length;
     const unread = tab === "All" ? unreadCount : notifications.filter((n) => n.category === tab && !n.read).length;
@@ -63,7 +63,7 @@ function NotificationsPage() {
       key={tab}
       type="button"
       onClick={() => setActiveTab(tab)}
-      className="relative px-5 py-3 text-xs tracking-widest uppercase transition-colors flex items-center gap-2"
+      className="relative px-3 sm:px-5 py-3 text-xs tracking-widest uppercase transition-colors flex items-center gap-2 whitespace-nowrap"
       style={{
         color: activeTab === tab ? "#0a0a0a" : "#8c8277",
         fontFamily: "Manrope, sans-serif",
@@ -94,7 +94,7 @@ function NotificationsPage() {
     animate={{ opacity: 1, y: 0 }}
     exit={{ opacity: 0 }}
     onClick={() => markRead(n.id)}
-    className="relative flex items-start gap-4 p-4 border cursor-pointer transition-colors"
+    className="relative flex items-start gap-3 p-3 sm:p-4 border cursor-pointer transition-colors"
     style={{
       borderColor: "#f0ebe2",
       backgroundColor: n.read ? "#fafafa" : "#f0ebe2",
@@ -110,7 +110,7 @@ function NotificationsPage() {
     /* Icon */
   }
                 <div
-    className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center mt-0.5"
+    className="flex-shrink-0 w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center mt-0.5"
     style={{ backgroundColor: "#f0ebe2", color: "#2d4a3e" }}
   >
                   {categoryIcon[n.category]}

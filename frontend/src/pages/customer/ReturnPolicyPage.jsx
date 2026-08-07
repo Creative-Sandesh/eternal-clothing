@@ -56,7 +56,7 @@ To exchange for a different style or at a different price point, please return t
 ];
 function ReturnPolicyPage() {
   return <div className="bg-[#fafafa] min-h-screen">
-      <div className="bg-[#0a0a0a] pt-28 pb-16 px-6">
+      <div className="bg-[#0a0a0a] pt-24 sm:pt-28 pb-16 px-4 sm:px-6">
         <div className="max-w-4xl mx-auto">
           <motion.p
     initial={{ opacity: 0 }}
@@ -69,7 +69,7 @@ function ReturnPolicyPage() {
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.6 }}
-    className="font-display text-6xl text-[#fafafa] leading-none"
+    className="font-display text-4xl sm:text-6xl text-[#fafafa] leading-none"
   >
             Returns & Exchanges
           </motion.h1>
@@ -77,7 +77,7 @@ function ReturnPolicyPage() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-6 py-16">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
         <div className="space-y-12">
           {sections.map((s, i) => <motion.div
     key={s.title}
@@ -87,7 +87,7 @@ function ReturnPolicyPage() {
     transition={{ duration: 0.5, delay: i * 0.05 }}
     className="border-t border-[#0a0a0a]/10 pt-8"
   >
-              <h2 className="font-display text-2xl text-[#0a0a0a] mb-4">{s.title}</h2>
+              <h2 className="font-display text-xl sm:text-2xl text-[#0a0a0a] mb-4">{s.title}</h2>
               <div className="space-y-3">
                 {s.content.split("\n\n").map((para, j) => <p key={j} className="text-[#0a0a0a]/70 text-base leading-relaxed">{para}</p>)}
               </div>
