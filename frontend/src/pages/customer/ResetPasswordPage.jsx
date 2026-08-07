@@ -60,7 +60,7 @@ function ResetPasswordPage() {
     animate={{ opacity: 1, y: 0 }}
     exit={{ opacity: 0 }}
     transition={{ duration: 0.3 }}
-    className="border p-10 text-center"
+    className="border px-6 py-8 sm:p-10 text-center"
     style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa" }}
   >
               <motion.div
@@ -95,7 +95,7 @@ function ResetPasswordPage() {
     exit={{ opacity: 0 }}
     transition={{ duration: 0.3 }}
     onSubmit={handleSubmit}
-    className="border p-8 flex flex-col gap-6"
+    className="border px-6 py-8 sm:p-8 flex flex-col gap-6"
     style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa" }}
   >
               <div>

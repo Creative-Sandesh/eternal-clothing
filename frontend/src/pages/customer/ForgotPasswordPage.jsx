@@ -27,14 +27,14 @@ function ForgotPasswordPage() {
         {
     /* Logo */
   }
-        <Link to="/" className="block mb-12 text-center">
+        <Link to="/" className="block mb-8 sm:mb-12 text-center">
           <span className="font-display text-2xl tracking-[0.2em] uppercase" style={{ color: "#0a0a0a" }}>
             Eternal
           </span>
         </Link>
 
         <div
-    className="px-10 py-12"
+    className="px-6 py-10 sm:px-10 sm:py-12"
     style={{ backgroundColor: "#fafafa" }}
   >
           <AnimatePresence mode="wait">

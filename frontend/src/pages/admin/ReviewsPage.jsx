@@ -16,7 +16,7 @@ const ReviewCard = ({ review, onApprove, onReject, onFlag }) => <motion.div
   className={`bg-white rounded-xl border shadow-sm overflow-hidden ${review.status === "pending" ? "border-l-4 border-l-amber-400 border-gray-100" : review.status === "reported" ? "border-l-4 border-l-red-400 border-gray-100" : "border-gray-100"}`}
 >
     <div className="p-5">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="flex items-start gap-3 flex-1 min-w-0">
           <div className="w-9 h-9 rounded-full bg-[#f0ebe2] flex items-center justify-center text-[#2d4a3e] font-bold text-sm flex-shrink-0">
             {review.customerName.split(" ").map((n) => n[0]).join("")}
@@ -41,7 +41,7 @@ const ReviewCard = ({ review, onApprove, onReject, onFlag }) => <motion.div
         {
   /* Actions */
 }
-        <div className="flex items-center gap-1 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto sm:flex-shrink-0">
           {review.status === "pending" && <>
               <button
   onClick={onApprove}
@@ -78,7 +78,7 @@ const ReviewCard = ({ review, onApprove, onReject, onFlag }) => <motion.div
         </div>
       </div>
 
-      <div className="mt-3 pl-12">
+      <div className="mt-3 pl-0 sm:pl-12 min-w-0">
         <p className="text-sm font-semibold text-gray-900">{review.title}</p>
         <p className="text-sm text-gray-600 mt-1 leading-relaxed">{review.body}</p>
         {review.helpful > 0 && <p className="text-xs text-gray-400 mt-2">{review.helpful} people found this helpful</p>}
@@ -109,7 +109,7 @@ function ReviewsPage() {
       {
     /* Tabs */
   }
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-full sm:w-fit overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         {tabs.map((tab) => {
     const count = reviewList.filter((r) => r.status === tab.value).length;
     return <button

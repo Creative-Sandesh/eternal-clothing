@@ -102,14 +102,14 @@ function ProductDetailPage() {
       {
     /* Main product section */
   }
-      <div className="max-w-7xl mx-auto px-4 py-12">
-        <div className="grid grid-cols-12 gap-12">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+        <div className="grid grid-cols-12 gap-6 md:gap-12">
 
           {
     /* LEFT — Image Gallery */
   }
           <div className="col-span-12 md:col-span-5">
-            <div className="sticky top-8">
+            <div className="md:sticky md:top-8">
               {
     /* Main image */
   }
@@ -134,14 +134,14 @@ function ProductDetailPage() {
                 {images.length > 1 && <>
                     <button
     onClick={handlePrevImage}
-    className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-[#fafafa]/80 backdrop-blur-sm flex items-center justify-center hover:bg-[#fafafa] transition opacity-0 group-hover:opacity-100"
+    className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-[#fafafa]/80 backdrop-blur-sm flex items-center justify-center hover:bg-[#fafafa] transition opacity-100 md:opacity-0 md:group-hover:opacity-100"
     aria-label="Previous image"
   >
                       <FiChevronLeft className="text-[#0a0a0a] text-lg" />
                     </button>
                     <button
     onClick={handleNextImage}
-    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-[#fafafa]/80 backdrop-blur-sm flex items-center justify-center hover:bg-[#fafafa] transition opacity-0 group-hover:opacity-100"
+    className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 bg-[#fafafa]/80 backdrop-blur-sm flex items-center justify-center hover:bg-[#fafafa] transition opacity-100 md:opacity-0 md:group-hover:opacity-100"
     aria-label="Next image"
   >
                       <FiChevronRight className="text-[#0a0a0a] text-lg" />
@@ -171,7 +171,7 @@ function ProductDetailPage() {
           {
     /* RIGHT — Product Details */
   }
-          <div className="col-span-12 md:col-span-7">
+          <div className="col-span-12 md:col-span-7 pt-2 md:pt-0">
 
             {
     /* Breadcrumb */
@@ -197,7 +197,7 @@ function ProductDetailPage() {
             {
     /* Product name */
   }
-            <h1 className="font-display text-4xl md:text-5xl text-[#0a0a0a] leading-tight">
+            <h1 className="font-display text-3xl sm:text-4xl md:text-5xl text-[#0a0a0a] leading-tight">
               {product.name}
             </h1>
 
@@ -360,7 +360,7 @@ function ProductDetailPage() {
             {
     /* Delivery strip */
   }
-            <div className="flex gap-6 mt-4 text-xs text-[#8c8277]">
+            <div className="flex flex-wrap gap-4 mt-4 text-xs text-[#8c8277]">
               <span className="flex items-center gap-1.5">
                 <FiTruck className="text-sm" />
                 Free delivery over £200
@@ -405,8 +405,8 @@ function ProductDetailPage() {
       {
     /* Below fold — Tabs */
   }
-      <div className="max-w-7xl mx-auto px-4 pb-16">
-        <div className="border-b border-[#f0ebe2] flex gap-8 mb-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+        <div className="border-b border-[#f0ebe2] flex gap-6 sm:gap-8 mb-8 overflow-x-auto">
           {["details", "reviews"].map((tab) => <button
     key={tab}
     onClick={() => setActiveTab(tab)}
@@ -471,9 +471,9 @@ function ProductDetailPage() {
     /* Related Products */
   }
       {displayRelated.length > 0 && <div className="bg-[#f0ebe2] py-16">
-          <div className="max-w-7xl mx-auto px-4">
-            <h2 className="font-display text-3xl text-[#0a0a0a] mb-10 text-center">You May Also Like</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <h2 className="font-display text-2xl sm:text-3xl text-[#0a0a0a] mb-8 sm:mb-10 text-center">You May Also Like</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6">
               {displayRelated.map((related) => <motion.div
     key={related.id}
     whileHover={{ y: -4 }}

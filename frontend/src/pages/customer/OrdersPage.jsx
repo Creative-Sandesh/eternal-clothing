@@ -21,7 +21,7 @@ const statusStyles = {
 function OrdersPage() {
   const [activeFilter, setActiveFilter] = useState("all");
   const filtered = activeFilter === "all" ? orders : orders.filter((o) => o.status === activeFilter);
-  return <div className="space-y-8">
+  return <div className="space-y-8 pt-20 sm:pt-0">
       {
     /* Header */
   }
@@ -35,7 +35,7 @@ function OrdersPage() {
       {
     /* Filter tabs */
   }
-      <div className="flex gap-0 border-b overflow-x-auto" style={{ borderColor: "#f0ebe2" }}>
+      <div className="flex gap-0 border-b overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" style={{ borderColor: "#f0ebe2" }}>
         {filters.map((f) => <button
     key={f.value}
     type="button"
@@ -82,7 +82,7 @@ function OrdersPage() {
     className="border p-6 hover:border-[#0a0a0a] transition-colors duration-200"
     style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa" }}
   >
-                <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between sm:gap-4 mb-4">
                   <div>
                     <p className="font-semibold text-sm mb-0.5" style={{ color: "#0a0a0a", fontFamily: "Manrope, sans-serif" }}>
                       {order.orderNumber}
@@ -138,7 +138,7 @@ function OrdersPage() {
                 <div className="flex justify-end">
                   <Link
     to={`/account/orders/${order.id}`}
-    className="inline-flex items-center gap-2 text-xs uppercase tracking-widest px-6 py-3 border transition-colors duration-200 hover:bg-[#0a0a0a] hover:text-[#fafafa] hover:border-[#0a0a0a]"
+    className="inline-flex items-center justify-center gap-2 text-xs uppercase tracking-widest px-6 py-3 border transition-colors duration-200 hover:bg-[#0a0a0a] hover:text-[#fafafa] hover:border-[#0a0a0a] w-full sm:w-auto"
     style={{ borderColor: "#0a0a0a", color: "#0a0a0a", fontFamily: "Manrope, sans-serif" }}
   >
                     View Details <FiChevronRight size={14} />
