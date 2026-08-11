@@ -2,7 +2,7 @@
 
 This document outlines the backend implementation required to support the frontend application based on the UI components and pages identified.
 
-## Overview
+## Overviews
 The frontend is a comprehensive React/Vite e-commerce application with a full customer-facing shop and an extensive admin dashboard. The backend needs to provide RESTful or GraphQL APIs to handle authentication, product management, order processing, customer accounts, and administrative features.
 
 ## 1. Authentication & Authorization

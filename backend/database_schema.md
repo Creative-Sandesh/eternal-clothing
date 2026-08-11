@@ -2,7 +2,7 @@
 
 This document details the database schema required for the Eternal E-commerce platform, based on the features available in the frontend UI.
 
-## Entity Relationship Diagram (Mermaid)
+## Entity Relationship Diagrams (Mermaid)
 
 ```mermaid
 erDiagram

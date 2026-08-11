@@ -1,6 +1,6 @@
 # eternal-clothing-store
 
-## Database Schema
+## Database Schemas
 
 The application uses a relational database to store e‑commerce data. Below is a concise representation of each table, its columns, data types, and key constraints.
 

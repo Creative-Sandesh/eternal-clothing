@@ -2,8 +2,7 @@
 
 This document illustrates the use cases for the Eternal E-commerce backend based on the frontend UI requirements.
 
-## Use Case Diagram (Mermaid)
-
+## Use Case Diagrams (Mermaid)
 ```mermaid
 usecaseDiagram
     actor Customer as "Customer"
