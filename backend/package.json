@@ -1,5 +1,29 @@
 {
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "The application uses a relational database to store e‑commerce data. Below is a concise representation of each table, its columns, data types, and key constraints.",
+  "keywords": [
+    "backend",
+    "shopping",
+    "node",
+    "js"
+  ],
+  "license": "ISC",
+  "author": "sital prakash singh",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "nodemon src/index.js"
+  },
   "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14",
+    "prettier": "^3.9.6"
   }
 }
