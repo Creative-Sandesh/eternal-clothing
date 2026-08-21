@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { FiCheck, FiChevronRight, FiLock, FiPackage, FiCreditCard, FiMapPin } from "react-icons/fi";
+import { FiCheck, FiChevronRight, FiLock, FiPackage, FiCreditCard, FiMapPin, FiTag, FiLoader } from "react-icons/fi";
 import { useCart } from "../../context/CartContext";
+import { useAuth } from "../../context/AuthContext";
+import { addressApi, couponApi, orderApi } from "../../services/api";
 const STEPS = [
   { number: 1, label: "Contact", icon: FiCheck },
   { number: 2, label: "Shipping", icon: FiMapPin },
@@ -45,12 +47,59 @@ function CheckoutPage() {
     billingPostcode: "",
     agreedToTerms: false
   });
+  // Address & coupon state
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [selectedAddressId, setSelectedAddressId] = useState(null);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponError, setCouponError] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderError, setOrderError] = useState("");
+
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { items, total, clearCart } = useCart();
+
+  // Pre-fill email from logged-in user
+  useEffect(() => {
+    if (user?.email && !form.email) {
+      setForm((prev) => ({ ...prev, email: user.email }));
+    }
+  }, [user]);
+
+  // Load saved addresses for logged-in users
+  useEffect(() => {
+    if (user) {
+      addressApi
+        .getAll()
+        .then((res) => {
+          const addrs = res.data ?? [];
+          setSavedAddresses(addrs);
+          if (addrs.length > 0) {
+            const def = addrs.find((a) => a.isDefault) || addrs[0];
+            setSelectedAddressId(def.id);
+            setForm((prev) => ({
+              ...prev,
+              firstName: def.firstName || prev.firstName,
+              lastName: def.lastName || prev.lastName,
+              address: def.addressLine1 || prev.address,
+              city: def.city || prev.city,
+              postcode: def.postalCode || prev.postcode,
+              country: def.country || prev.country
+            }));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [user]);
+
   const shippingCost = form.shippingMethod === "express" ? 12 : form.shippingMethod === "nextday" ? 25 : total >= 200 ? 0 : 8;
-  const displayTotal = items.length > 0 ? total : 405;
+  const displayTotal = items.length > 0 ? total : 0;
   const tax = displayTotal * 0.2;
-  const grandTotal = displayTotal + shippingCost + tax;
+  const grandTotal = displayTotal + shippingCost + tax - couponDiscount;
+
   function updateForm(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
@@ -71,9 +120,92 @@ function CheckoutPage() {
     const last4 = raw.slice(-4);
     return `\u25CF\u25CF\u25CF\u25CF \u25CF\u25CF\u25CF\u25CF \u25CF\u25CF\u25CF\u25CF ${last4}`;
   }
-  function handlePlaceOrder() {
-    clearCart();
-    navigate("/order-confirmation");
+
+  // Apply coupon code via backend
+  async function handleApplyCoupon() {
+    if (!couponCode.trim()) return;
+    setCouponLoading(true);
+    setCouponError("");
+    try {
+      const res = await couponApi.validate(couponCode.trim(), displayTotal);
+      const discount = res.data?.discountAmount ?? 0;
+      setCouponDiscount(discount);
+      setAppliedCoupon(couponCode.trim());
+      setCouponError("");
+    } catch (err) {
+      setCouponDiscount(0);
+      setAppliedCoupon(null);
+      setCouponError(err.message || "Invalid or expired coupon code.");
+    } finally {
+      setCouponLoading(false);
+    }
+  }
+
+  // Place order via backend
+  async function handlePlaceOrder() {
+    if (!form.agreedToTerms) return;
+    setOrderLoading(true);
+    setOrderError("");
+    try {
+      let shippingAddressId = selectedAddressId;
+      let billingAddressId = selectedAddressId;
+
+      // If no saved address selected (guest or new address), create one
+      if (!shippingAddressId && user) {
+        const newAddr = await addressApi.create({
+          firstName: form.firstName,
+          lastName: form.lastName,
+          addressLine1: form.address,
+          city: form.city,
+          postalCode: form.postcode,
+          country: form.country,
+          isDefault: false
+        });
+        shippingAddressId = newAddr.data?.id;
+        billingAddressId = shippingAddressId;
+      }
+
+      if (!form.billingSameAsShipping && user) {
+        const billingAddr = await addressApi.create({
+          firstName: form.firstName,
+          lastName: form.lastName,
+          addressLine1: form.billingAddress,
+          city: form.billingCity,
+          postalCode: form.billingPostcode,
+          country: form.country,
+          isDefault: false
+        });
+        billingAddressId = billingAddr.data?.id;
+      }
+
+      // Map cart items to backend format
+      const orderItems = items.map((item) => ({
+        productVariantId: item.productVariantId,
+        quantity: item.quantity
+      })).filter((i) => i.productVariantId);
+
+      if (orderItems.length === 0) {
+        setOrderError("No valid items with variant info found. Please re-add items from the product page.");
+        setOrderLoading(false);
+        return;
+      }
+
+      const payload = {
+        items: orderItems,
+        shippingAddressId,
+        billingAddressId,
+        couponCode: appliedCoupon || undefined
+      };
+
+      const res = await orderApi.checkout(payload);
+      const orderId = res.data?.order?.id;
+      clearCart();
+      navigate("/order-confirmation", { state: { orderId } });
+    } catch (err) {
+      setOrderError(err.message || "Failed to place order. Please try again.");
+    } finally {
+      setOrderLoading(false);
+    }
   }
   const inputClass = "w-full border-b border-eternal-stone bg-transparent py-3 text-sm outline-none focus:border-eternal-black transition-colors placeholder:text-eternal-stone/60";
   const labelClass = "block text-xs font-medium tracking-widest uppercase text-eternal-stone mb-2";
@@ -183,132 +315,178 @@ function CheckoutPage() {
               {
     /* Step 2 — Shipping */
   }
-              {currentStep === 2 && <div>
-                  <h2 className="font-display text-2xl mb-6">Shipping Details</h2>
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className={labelClass}>First Name</label>
-                        <input
-    type="text"
-    className={inputClass}
-    placeholder="Jane"
-    value={form.firstName}
-    onChange={(e) => updateForm("firstName", e.target.value)}
-  />
-                      </div>
-                      <div>
-                        <label className={labelClass}>Last Name</label>
-                        <input
-    type="text"
-    className={inputClass}
-    placeholder="Smith"
-    value={form.lastName}
-    onChange={(e) => updateForm("lastName", e.target.value)}
-  />
-                      </div>
-                    </div>
-                    <div>
-                      <label className={labelClass}>Address</label>
-                      <input
-    type="text"
-    className={inputClass}
-    placeholder="12 Mayfair Lane"
-    value={form.address}
-    onChange={(e) => updateForm("address", e.target.value)}
-  />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className={labelClass}>City</label>
-                        <input
-    type="text"
-    className={inputClass}
-    placeholder="London"
-    value={form.city}
-    onChange={(e) => updateForm("city", e.target.value)}
-  />
-                      </div>
-                      <div>
-                        <label className={labelClass}>Postcode</label>
-                        <input
-    type="text"
-    className={inputClass}
-    placeholder="W1K 1AB"
-    value={form.postcode}
-    onChange={(e) => updateForm("postcode", e.target.value)}
-  />
-                      </div>
-                    </div>
-                    <div>
-                      <label className={labelClass}>Country</label>
-                      <select
-    className={inputClass + " cursor-pointer"}
-    value={form.country}
-    onChange={(e) => updateForm("country", e.target.value)}
-  >
-                        {COUNTRIES.map((c) => <option key={c} value={c}>
-                            {c}
-                          </option>)}
-                      </select>
-                    </div>
-
-                    {
-    /* Shipping Method */
-  }
-                    <div className="mt-8">
-                      <p className={labelClass + " mb-4"}>Shipping Method</p>
+              {currentStep === 2 && (
+                <div>
+                  {/* Saved Addresses - only for logged-in users with existing addresses */}
+                  {user && savedAddresses.length > 0 && (
+                    <div className="mb-8">
+                      <p className={labelClass + " mb-4"}>Saved Addresses</p>
                       <div className="space-y-3">
-                        {[
-    {
-      id: "standard",
-      label: "Standard",
-      price: "Free",
-      detail: "3\u20135 working days"
-    },
-    {
-      id: "express",
-      label: "Express",
-      price: "\xA312.00",
-      detail: "1\u20132 working days"
-    },
-    {
-      id: "nextday",
-      label: "Next Day",
-      price: "\xA325.00",
-      detail: "Order before 2pm"
-    }
-  ].map((option) => <button
-    key={option.id}
-    type="button"
-    onClick={() => updateForm("shippingMethod", option.id)}
-    className={[
-      "w-full border p-4 text-left transition-colors",
-      form.shippingMethod === option.id ? "border-eternal-black bg-eternal-beige" : "border-eternal-stone/30 bg-transparent hover:border-eternal-stone"
-    ].join(" ")}
-  >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div
-    className={[
-      "h-4 w-4 rounded-full border flex items-center justify-center flex-shrink-0",
-      form.shippingMethod === option.id ? "border-eternal-black" : "border-eternal-stone"
-    ].join(" ")}
-  >
-                                  {form.shippingMethod === option.id && <div className="h-2 w-2 rounded-full bg-eternal-black" />}
-                                </div>
-                                <div>
-                                  <p className="text-sm font-medium">{option.label}</p>
-                                  <p className="text-xs text-eternal-stone mt-0.5">{option.detail}</p>
-                                </div>
-                              </div>
-                              <span className="text-sm font-medium">{option.price}</span>
-                            </div>
-                          </button>)}
+                        {savedAddresses.map((addr) => (
+                          <button
+                            key={addr.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedAddressId(addr.id);
+                              setForm((prev) => ({
+                                ...prev,
+                                firstName: addr.firstName || prev.firstName,
+                                lastName: addr.lastName || prev.lastName,
+                                address: addr.addressLine1 || prev.address,
+                                city: addr.city || prev.city,
+                                postcode: addr.postalCode || prev.postcode,
+                                country: addr.country || prev.country
+                              }));
+                            }}
+                            className={[
+                              "w-full text-left border p-4 text-sm transition-colors",
+                              selectedAddressId === addr.id
+                                ? "border-eternal-black bg-eternal-beige"
+                                : "border-eternal-stone/30 hover:border-eternal-stone"
+                            ].join(" ")}
+                          >
+                            <p className="font-medium">{addr.firstName} {addr.lastName}</p>
+                            <p className="text-eternal-stone text-xs mt-0.5">
+                              {addr.addressLine1}, {addr.city} {addr.postalCode}, {addr.country}
+                            </p>
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAddressId(null)}
+                          className={[
+                            "w-full text-left border p-4 text-sm transition-colors",
+                            selectedAddressId === null
+                              ? "border-eternal-black bg-eternal-beige"
+                              : "border-eternal-stone/30 hover:border-eternal-stone"
+                          ].join(" ")}
+                        >
+                          + Enter a new address
+                        </button>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Manual address fields: always shown for guests; shown for logged-in only when entering a new address */}
+                  {(!user || selectedAddressId === null) && (
+                    <div>
+                      <h2 className="font-display text-2xl mb-6">Shipping Details</h2>
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className={labelClass}>First Name</label>
+                            <input
+                              type="text"
+                              className={inputClass}
+                              placeholder="Jane"
+                              value={form.firstName}
+                              onChange={(e) => updateForm("firstName", e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelClass}>Last Name</label>
+                            <input
+                              type="text"
+                              className={inputClass}
+                              placeholder="Smith"
+                              value={form.lastName}
+                              onChange={(e) => updateForm("lastName", e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className={labelClass}>Address</label>
+                          <input
+                            type="text"
+                            className={inputClass}
+                            placeholder="12 Mayfair Lane"
+                            value={form.address}
+                            onChange={(e) => updateForm("address", e.target.value)}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className={labelClass}>City</label>
+                            <input
+                              type="text"
+                              className={inputClass}
+                              placeholder="London"
+                              value={form.city}
+                              onChange={(e) => updateForm("city", e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <label className={labelClass}>Postcode</label>
+                            <input
+                              type="text"
+                              className={inputClass}
+                              placeholder="W1K 1AB"
+                              value={form.postcode}
+                              onChange={(e) => updateForm("postcode", e.target.value)}
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className={labelClass}>Country</label>
+                          <select
+                            className={inputClass + " cursor-pointer"}
+                            value={form.country}
+                            onChange={(e) => updateForm("country", e.target.value)}
+                          >
+                            {COUNTRIES.map((c) => (
+                              <option key={c} value={c}>{c}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Shipping Method */}
+                  <div className="mt-8">
+                    <p className={labelClass + " mb-4"}>Shipping Method</p>
+                    <div className="space-y-3">
+                      {[
+                        { id: "standard", label: "Standard", price: "Free", detail: "3–5 working days" },
+                        { id: "express", label: "Express", price: "£12.00", detail: "1–2 working days" },
+                        { id: "nextday", label: "Next Day", price: "£25.00", detail: "Order before 2pm" }
+                      ].map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => updateForm("shippingMethod", option.id)}
+                          className={[
+                            "w-full border p-4 text-left transition-colors",
+                            form.shippingMethod === option.id
+                              ? "border-eternal-black bg-eternal-beige"
+                              : "border-eternal-stone/30 bg-transparent hover:border-eternal-stone"
+                          ].join(" ")}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={[
+                                  "h-4 w-4 rounded-full border flex items-center justify-center flex-shrink-0",
+                                  form.shippingMethod === option.id ? "border-eternal-black" : "border-eternal-stone"
+                                ].join(" ")}
+                              >
+                                {form.shippingMethod === option.id && (
+                                  <div className="h-2 w-2 rounded-full bg-eternal-black" />
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-sm font-medium">{option.label}</p>
+                                <p className="text-xs text-eternal-stone mt-0.5">{option.detail}</p>
+                              </div>
+                            </div>
+                            <span className="text-sm font-medium">{option.price}</span>
+                          </div>
+                        </button>
+                      ))}
                     </div>
                   </div>
-                </div>}
+                </div>
+              )}
 
               {
     /* Step 3 — Payment */
@@ -511,12 +689,21 @@ function CheckoutPage() {
                     </span>
                   </label>
 
+                  {orderError && (
+                    <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 px-4 py-3">
+                      {orderError}
+                    </p>
+                  )}
                   <button
     onClick={handlePlaceOrder}
-    disabled={!form.agreedToTerms}
-    className="mt-6 w-full bg-eternal-black text-eternal-white py-4 text-sm tracking-widest uppercase disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+    disabled={!form.agreedToTerms || orderLoading}
+    className="mt-6 w-full bg-eternal-black text-eternal-white py-4 text-sm tracking-widest uppercase disabled:opacity-40 disabled:cursor-not-allowed transition-opacity flex items-center justify-center gap-2"
   >
-                    Place Order
+                    {orderLoading ? (
+                      <><FiLoader size={14} className="animate-spin" /> Placing Order...</>
+                    ) : (
+                      "Place Order"
+                    )}
                   </button>
                 </div>}
 
@@ -593,6 +780,34 @@ function CheckoutPage() {
                 </>}
             </div>
 
+            {/* Coupon Code Input */}
+            <div className="mb-4">
+              <p className={labelClass}>Discount Code</p>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value)}
+                  placeholder="Enter code"
+                  className="flex-1 border-b border-eternal-stone bg-transparent py-2 text-sm outline-none focus:border-eternal-black transition-colors placeholder:text-eternal-stone/50"
+                  onKeyDown={(e) => e.key === "Enter" && handleApplyCoupon()}
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyCoupon}
+                  disabled={couponLoading || !couponCode.trim()}
+                  className="text-xs tracking-widest uppercase px-3 py-2 border border-eternal-black text-eternal-black hover:bg-eternal-black hover:text-eternal-white transition-colors disabled:opacity-40 flex items-center gap-1"
+                >
+                  {couponLoading ? <FiLoader size={11} className="animate-spin" /> : <FiTag size={11} />}
+                  Apply
+                </button>
+              </div>
+              {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
+              {appliedCoupon && !couponError && (
+                <p className="text-xs text-green-600 mt-1">✓ Code "{appliedCoupon}" applied — £{couponDiscount.toFixed(2)} off</p>
+              )}
+            </div>
+
             <div className="border-t border-eternal-stone/20 pt-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-eternal-stone">Subtotal</span>
@@ -601,16 +816,22 @@ function CheckoutPage() {
               <div className="flex justify-between text-sm">
                 <span className="text-eternal-stone">Shipping</span>
                 <span>
-                  {shippingCost === 0 ? "Free" : `\xA3${shippingCost.toFixed(2)}`}
+                  {shippingCost === 0 ? "Free" : `£${shippingCost.toFixed(2)}`}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-eternal-stone">Tax (20% VAT)</span>
                 <span>£{tax.toFixed(2)}</span>
               </div>
+              {couponDiscount > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Discount ({appliedCoupon})</span>
+                  <span>-£{couponDiscount.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm font-medium border-t border-eternal-stone/20 pt-3 mt-3">
                 <span>Total</span>
-                <span>£{grandTotal.toFixed(2)}</span>
+                <span>£{Math.max(0, grandTotal).toFixed(2)}</span>
               </div>
             </div>
 

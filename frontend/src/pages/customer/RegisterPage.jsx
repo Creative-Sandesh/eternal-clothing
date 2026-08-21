@@ -1,8 +1,12 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { FiMail, FiLock, FiUser, FiArrowRight, FiCheck } from "react-icons/fi";
+import { FiMail, FiLock, FiUser, FiArrowRight, FiCheck, FiAlertCircle } from "react-icons/fi";
+import { useAuth } from "../../context/AuthContext";
 function RegisterPage() {
+  const { register } = useAuth();
+  const navigate = useNavigate();
+
   const [form, setForm] = useState({
     firstName: "",
     lastName: "",
@@ -13,15 +17,35 @@ function RegisterPage() {
     terms: false
   });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setForm((prev) => ({ ...prev, [name]: type === "checkbox" ? checked : value }));
   };
-  const handleSubmit = (e) => {
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.terms) return;
+    if (form.password !== form.confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    setError("");
     setLoading(true);
-    setTimeout(() => setLoading(false), 1500);
+    try {
+      await register({
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        password: form.password,
+      });
+      navigate("/login", { state: { registered: true } });
+    } catch (err) {
+      setError(err.message || "Registration failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
   const inputClass = "flex-1 bg-transparent outline-none py-3 pl-3 text-sm";
   const inputStyle = {

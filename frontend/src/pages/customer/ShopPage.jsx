@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiHeart, FiFilter, FiX, FiGrid, FiList, FiChevronDown, FiChevronUp } from "react-icons/fi";
-import { products, collections } from "../../data/products";
+import { productApi, categoryApi, collectionApi } from "../../services/api";
 import { useCart } from "../../context/CartContext";
 import { useWishlist } from "../../context/WishlistContext";
 const SIZES = ["XS", "S", "M", "L", "XL", "XXL", "28", "30", "32", "34", "36"];
@@ -81,6 +81,66 @@ function ShopPage() {
   const [hoveredProduct, setHoveredProduct] = useState(null);
   const [openFilterSections, setOpenFilterSections] = useState(["Category", "Collection"]);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // ── Live API data ─────────────────────────────────────────────────────────
+  const [products, setProducts] = useState([]);
+  const [collections, setCollections] = useState([]);
+  const [apiLoading, setApiLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [prodRes, colRes] = await Promise.all([
+          productApi.getProducts({ limit: 100 }),
+          collectionApi.getAll(),
+        ]);
+
+        if (cancelled) return;
+
+        // Normalize products so existing filter/sort/render logic keeps working
+        const normalised = (prodRes.data?.products ?? prodRes.data ?? []).map((p) => ({
+          ...p,
+          // Frontend shape compatibility
+          id: p.id,
+          slug: p.slug,
+          name: p.name,
+          price: Number(p.basePrice),
+          originalPrice: p.originalPrice ? Number(p.originalPrice) : null,
+          isSale: Boolean(p.originalPrice && Number(p.originalPrice) > Number(p.basePrice)),
+          image: Array.isArray(p.images) ? p.images[0] : p.images,
+          images: Array.isArray(p.images) ? p.images : [p.images],
+          category: p.Category?.name ?? p.category ?? "",
+          collection: p.Collection?.name ?? p.collection ?? "",
+          material: p.material,
+          // Derive unique colors & sizes from variants
+          colors: Array.isArray(p.ProductVariants)
+            ? [...new Map(p.ProductVariants.map((v) => [v.colorName, { name: v.colorName, hex: v.colorHex }])).values()]
+            : p.colors ?? [],
+          sizes: Array.isArray(p.ProductVariants)
+            ? [...new Set(p.ProductVariants.map((v) => v.size))]
+            : p.sizes ?? [],
+          inStock: Array.isArray(p.ProductVariants)
+            ? p.ProductVariants.some((v) => v.stockQuantity > 0)
+            : true,
+          rating: Number(p.avgRating ?? p.rating ?? 0),
+          reviewCount: Number(p.reviewCount ?? 0),
+          isNew: false,
+        }));
+
+        setProducts(normalised);
+        setCollections(colRes.data?.collections ?? colRes.data ?? []);
+      } catch (err) {
+        console.error("ShopPage: failed to load products", err);
+      } finally {
+        if (!cancelled) setApiLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
+
   const { addItem } = useCart();
   const { toggle: toggleWishlist, isWishlisted } = useWishlist();
   useEffect(() => {
@@ -405,11 +465,19 @@ function ShopPage() {
             <FiltersContent />
           </aside>
 
-          {
-    /* Product Grid */
-  }
+          {/* Product Grid */}
           <main className="flex-1 min-w-0">
-            {paginatedProducts.length === 0 ? <div className="flex flex-col items-center justify-center py-24 text-center">
+            {apiLoading ? (
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 md:gap-6">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="animate-pulse">
+                    <div className="aspect-[3/4] bg-eternal-beige mb-3" />
+                    <div className="h-3 bg-eternal-beige rounded w-3/4 mb-2" />
+                    <div className="h-3 bg-eternal-beige rounded w-1/3" />
+                  </div>
+                ))}
+              </div>
+            ) : paginatedProducts.length === 0 ? <div className="flex flex-col items-center justify-center py-24 text-center">
                 <p className="font-display text-2xl text-eternal-black mb-2">No products found</p>
                 <p className="text-sm text-eternal-stone mb-6">Try adjusting your filters to see more results.</p>
                 <button

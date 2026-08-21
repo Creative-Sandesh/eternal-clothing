@@ -1,15 +1,39 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { FiMail, FiLock, FiArrowRight } from "react-icons/fi";
+import { FiMail, FiLock, FiArrowRight, FiAlertCircle } from "react-icons/fi";
+import { useAuth } from "../../context/AuthContext";
 function LoginPage() {
+  const { login, isAuthenticated, isAdmin } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from?.pathname || null;
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const handleSubmit = (e) => {
+  const [error, setError] = useState("");
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
     setLoading(true);
-    setTimeout(() => setLoading(false), 1500);
+    try {
+      await login(email, password);
+      // Redirect: if the user was going somewhere specific, send them there;
+      // otherwise admins go to /admin, customers go to /account.
+      if (from) {
+        navigate(from, { replace: true });
+      } else if (isAdmin) {
+        navigate("/admin", { replace: true });
+      } else {
+        navigate("/account", { replace: true });
+      }
+    } catch (err) {
+      setError(err.message || "Invalid email or password. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
   return <div className="min-h-screen flex" style={{ backgroundColor: "#fafafa" }}>
       {
@@ -66,6 +90,17 @@ function LoginPage() {
           <p className="text-sm mb-10" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>
             Sign in to your account to continue
           </p>
+
+          {/* Error banner */}
+          {error && (
+            <div
+              className="flex items-center gap-2 mb-6 px-4 py-3 text-sm rounded"
+              style={{ backgroundColor: "#fef2f2", color: "#b91c1c", fontFamily: "Manrope, sans-serif" }}
+            >
+              <FiAlertCircle size={15} className="flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-8">
             {

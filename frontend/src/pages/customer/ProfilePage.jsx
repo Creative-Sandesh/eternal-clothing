@@ -1,53 +1,85 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { FiCamera, FiSave } from "react-icons/fi";
-const mockUser = {
-  firstName: "Aria",
-  lastName: "Laurent",
-  email: "aria.laurent@email.com",
-  phone: "+44 7700 900 123",
-  birthday: "1992-04-15",
-  avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&auto=format"
-};
+import { FiSave, FiLoader, FiCheck } from "react-icons/fi";
+import { useAuth } from "../../context/AuthContext";
+import { userApi } from "../../services/api";
+
 function ProfilePage() {
-  const [form, setForm] = useState(mockUser);
-  const [saved, setSaved] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const { user, setUser } = useAuth();
+  const [form, setForm]     = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    birthday: ""
+  });
+  const [loading, setLoading]   = useState(false);
+  const [saved, setSaved]       = useState(false);
+  const [error, setError]       = useState("");
+
+  // Pre-fill from auth context when user loads
+  useEffect(() => {
+    if (user) {
+      setForm({
+        firstName: user.firstName || "",
+        lastName:  user.lastName  || "",
+        email:     user.email     || "",
+        phone:     user.phone     || "",
+        birthday:  user.birthday  ? user.birthday.slice(0, 10) : ""
+      });
+    }
+  }, [user]);
+
   const handleChange = (e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
     setSaved(false);
+    setError("");
   };
-  const handleSubmit = (e) => {
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    setError("");
+    try {
+      const res = await userApi.updateMe({
+        firstName: form.firstName,
+        lastName:  form.lastName,
+        phone:     form.phone,
+        birthday:  form.birthday || undefined
+      });
+      // Update the auth context with new info if setUser is available
+      if (setUser && res.data) {
+        setUser((prev) => ({ ...prev, ...res.data }));
+      }
       setSaved(true);
-    }, 1e3);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (err) {
+      setError(err.message || "Failed to update profile. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
+
   const inputBorderStyle = { borderColor: "#8c8277" };
-  const inputStyle = {
-    color: "#0a0a0a",
-    fontFamily: "Manrope, sans-serif",
-    caretColor: "#2d4a3e"
-  };
+  const inputStyle = { color: "#0a0a0a", fontFamily: "Manrope, sans-serif", caretColor: "#2d4a3e" };
   const labelStyle = { color: "#8c8277", fontFamily: "Manrope, sans-serif" };
+
   const fields = [
-    { name: "firstName", label: "First Name", placeholder: "Aria" },
-    { name: "lastName", label: "Last Name", placeholder: "Laurent" },
-    { name: "email", label: "Email Address", type: "email", placeholder: "aria@email.com" },
-    { name: "phone", label: "Phone Number", type: "tel", placeholder: "+44 7700 900 000" },
-    { name: "birthday", label: "Birthday", type: "date", placeholder: "" }
+    { name: "firstName", label: "First Name",     placeholder: "Jane",           type: "text" },
+    { name: "lastName",  label: "Last Name",      placeholder: "Smith",          type: "text" },
+    { name: "email",     label: "Email Address",  placeholder: "jane@email.com", type: "email", readOnly: true },
+    { name: "phone",     label: "Phone Number",   placeholder: "+44 7700 900 000", type: "tel" },
+    { name: "birthday",  label: "Birthday",       placeholder: "",               type: "date" }
   ];
-  return <motion.div
-    initial={{ opacity: 0, y: 16 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.5 }}
-    className="space-y-8 max-w-2xl"
-  >
-      {
-    /* Header */
-  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      className="space-y-8 max-w-2xl"
+    >
+      {/* Header */}
       <div>
         <p className="text-xs uppercase tracking-widest mb-1" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>
           My Account
@@ -55,120 +87,85 @@ function ProfilePage() {
         <h1 className="font-display text-4xl" style={{ color: "#0a0a0a" }}>Profile Settings</h1>
       </div>
 
-      {
-    /* Avatar */
-  }
+      {/* Avatar placeholder */}
       <div className="flex items-center gap-6">
-        <div className="relative">
-          <img
-    src={form.avatar}
-    alt={`${form.firstName} ${form.lastName}`}
-    className="w-24 h-24 rounded-full object-cover"
-  />
-          <button
-    type="button"
-    className="absolute -bottom-1 -right-1 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-200 hover:bg-[#2d4a3e]"
-    style={{ backgroundColor: "#0a0a0a" }}
-    aria-label="Upload new photo"
-  >
-            <FiCamera size={14} color="#fafafa" />
-          </button>
+        <div
+          className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-display text-white"
+          style={{ backgroundColor: "#2d4a3e" }}
+        >
+          {(form.firstName?.[0] || "U").toUpperCase()}
         </div>
         <div>
-          <p className="text-sm font-semibold" style={{ color: "#0a0a0a", fontFamily: "Manrope, sans-serif" }}>
+          <p className="font-display text-xl" style={{ color: "#0a0a0a" }}>
             {form.firstName} {form.lastName}
           </p>
-          <button
-    type="button"
-    className="text-xs uppercase tracking-widest underline underline-offset-2 mt-1"
-    style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}
-  >
-            Change photo
-          </button>
+          <p className="text-sm" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>
+            {form.email}
+          </p>
         </div>
       </div>
 
-      {
-    /* Form */
-  }
-      <form onSubmit={handleSubmit} className="space-y-7">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-7">
-          {fields.map((field) => <div key={field.name} className={field.name === "email" ? "sm:col-span-2" : ""}>
-              <label
-    htmlFor={field.name}
-    className="block text-xs uppercase tracking-widest mb-2"
-    style={labelStyle}
-  >
-                {field.label}
-              </label>
-              <div className="flex items-center border-b" style={inputBorderStyle}>
-                <input
-    id={field.name}
-    name={field.name}
-    type={field.type ?? "text"}
-    value={form[field.name]}
-    onChange={handleChange}
-    placeholder={field.placeholder}
-    className="flex-1 bg-transparent outline-none py-3 text-sm"
-    style={inputStyle}
-  />
-              </div>
-            </div>)}
-        </div>
+      {/* Error banner */}
+      {error && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 px-4 py-3">
+          {error}
+        </p>
+      )}
 
-        <div className="flex items-center gap-4">
-          <button
-    type="submit"
-    disabled={loading}
-    className="inline-flex items-center gap-3 px-8 py-4 text-xs uppercase tracking-widest transition-opacity duration-200"
-    style={{
-      backgroundColor: "#0a0a0a",
-      color: "#fafafa",
-      fontFamily: "Manrope, sans-serif",
-      opacity: loading ? 0.6 : 1
-    }}
-  >
-            <FiSave size={14} />
-            {loading ? "Saving..." : "Save Changes"}
-          </button>
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {fields.map((field) => (
+          <div key={field.name}>
+            <label
+              htmlFor={`profile-${field.name}`}
+              className="block text-xs font-medium tracking-widest uppercase mb-2"
+              style={labelStyle}
+            >
+              {field.label}
+              {field.readOnly && (
+                <span className="ml-2 normal-case tracking-normal text-xs opacity-50">(cannot change email)</span>
+              )}
+            </label>
+            <input
+              id={`profile-${field.name}`}
+              type={field.type || "text"}
+              name={field.name}
+              placeholder={field.placeholder}
+              value={form[field.name]}
+              onChange={handleChange}
+              readOnly={field.readOnly}
+              className={[
+                "w-full border-b py-3 text-sm bg-transparent outline-none transition-colors",
+                field.readOnly
+                  ? "cursor-not-allowed opacity-50"
+                  : "focus:border-[#0a0a0a]"
+              ].join(" ")}
+              style={{ ...inputBorderStyle, ...inputStyle }}
+            />
+          </div>
+        ))}
 
-          {saved && <motion.p
-    initial={{ opacity: 0, x: -8 }}
-    animate={{ opacity: 1, x: 0 }}
-    className="text-sm"
-    style={{ color: "#2d4a3e", fontFamily: "Manrope, sans-serif" }}
-  >
-              Profile updated successfully
-            </motion.p>}
-        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="flex items-center gap-2 px-8 py-4 text-xs uppercase tracking-widest transition-all duration-200 disabled:opacity-50"
+          style={{
+            backgroundColor: saved ? "#2d4a3e" : "#0a0a0a",
+            color: "#fafafa",
+            fontFamily: "Manrope, sans-serif"
+          }}
+        >
+          {loading ? (
+            <><FiLoader size={14} className="animate-spin" /> Saving...</>
+          ) : saved ? (
+            <><FiCheck size={14} /> Saved</>
+          ) : (
+            <><FiSave size={14} /> Save Changes</>
+          )}
+        </button>
       </form>
-
-      {
-    /* Danger zone */
-  }
-      <div className="border-t pt-8" style={{ borderColor: "#f0ebe2" }}>
-        <h3 className="text-xs uppercase tracking-widest mb-4" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>
-          Account Actions
-        </h3>
-        <div className="flex flex-wrap gap-4">
-          <button
-    type="button"
-    className="text-xs uppercase tracking-widest px-6 py-3 border transition-colors duration-200 hover:bg-[#f0ebe2]"
-    style={{ borderColor: "#f0ebe2", color: "#8c8277", fontFamily: "Manrope, sans-serif" }}
-  >
-            Change Password
-          </button>
-          <button
-    type="button"
-    className="text-xs uppercase tracking-widest px-6 py-3 border transition-colors duration-200 hover:bg-red-50"
-    style={{ borderColor: "#fecaca", color: "#b91c1c", fontFamily: "Manrope, sans-serif" }}
-  >
-            Delete Account
-          </button>
-        </div>
-      </div>
-    </motion.div>;
+    </motion.div>
+  );
 }
-export {
-  ProfilePage as default
-};
+
+export { ProfilePage as default };

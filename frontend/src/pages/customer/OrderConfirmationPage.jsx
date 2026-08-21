@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiCheck, FiPackage, FiArrowRight } from "react-icons/fi";
 const orderItems = [
@@ -20,6 +20,8 @@ const orderItems = [
   }
 ];
 function OrderConfirmationPage() {
+  const location = useLocation();
+  const orderId = location.state?.orderId;
   const deliveryDate = /* @__PURE__ */ new Date();
   deliveryDate.setDate(deliveryDate.getDate() + 5);
   const formattedDelivery = deliveryDate.toLocaleDateString("en-GB", {
@@ -75,7 +77,9 @@ function OrderConfirmationPage() {
           <div className="flex items-center justify-between mb-6 pb-6 border-b border-[#f0ebe2]">
             <div>
               <p className="text-[#8c8277] text-xs tracking-widest uppercase mb-1">Order Number</p>
-              <p className="font-display text-2xl text-[#0a0a0a]">ET-2024-00422</p>
+              <p className="font-display text-2xl text-[#0a0a0a]">
+                {orderId ? `#${orderId}` : "ET-2024-00422"}
+              </p>
             </div>
             <div className="text-right">
               <p className="text-[#8c8277] text-xs tracking-widest uppercase mb-1">Estimated Delivery</p>
@@ -125,10 +129,13 @@ function OrderConfirmationPage() {
     transition={{ duration: 0.5, delay: 0.6 }}
     className="flex flex-col sm:flex-row gap-3"
   >
-          <button className="flex-1 flex items-center justify-center gap-2 bg-[#2d4a3e] text-white text-xs tracking-[0.15em] uppercase py-4 hover:bg-[#243d32] transition-colors">
+          <Link
+    to="/account/orders"
+    className="flex-1 flex items-center justify-center gap-2 bg-[#2d4a3e] text-white text-xs tracking-[0.15em] uppercase py-4 hover:bg-[#243d32] transition-colors"
+  >
             <FiPackage className="w-4 h-4" />
-            Track Your Order
-          </button>
+            View My Orders
+          </Link>
           <Link
     to="/shop"
     className="flex-1 flex items-center justify-center gap-2 border border-[#0a0a0a] text-[#0a0a0a] text-xs tracking-[0.15em] uppercase py-4 hover:bg-[#f0ebe2] transition-colors"

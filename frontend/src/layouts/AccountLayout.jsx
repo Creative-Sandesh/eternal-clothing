@@ -1,6 +1,7 @@
-import { useState, Suspense } from "react";
+import { useState, Suspense, useEffect } from "react";
 import { NavLink, Outlet, Link, useNavigate } from "react-router-dom";
 import ScrollToTop from "../components/ScrollToTop"
+import { useAuth } from "../context/AuthContext";
 import {
   FiGrid,
   FiPackage,
@@ -30,12 +31,6 @@ const navItems = [
   { to: "/account/referral", icon: <FiGift size={16} />, label: "Referral Programme" },
   { to: "/account/settings", icon: <FiSettings size={16} />, label: "Settings" }
 ];
-const mockUser = {
-  name: "Aria Laurent",
-  email: "aria.laurent@email.com",
-  tier: "Gold",
-  avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=120&h=120&fit=crop&auto=format"
-};
 const tierColor = {
   Bronze: "#cd7f32",
   Silver: "#8c8277",
@@ -43,12 +38,43 @@ const tierColor = {
   Platinum: "#2d4a3e"
 };
 function AccountLayout() {
+  const { user, loading, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      navigate("/login", { replace: true });
+    }
+  }, [user, loading, navigate]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
+        <div className="w-8 h-8 rounded-full border-2 border-[#f0ebe2] border-t-[#2d4a3e] animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
+  const userObj = {
+    name: `${user.firstName} ${user.lastName}`,
+    email: user.email,
+    tier: user.loyaltyTier || "Gold",
+    avatar: user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.firstName)}+${encodeURIComponent(user.lastName)}&background=f0ebe2&color=0a0a0a`
+  };
+
   const activeLinkClass = ({ isActive }) => [
     "flex items-center gap-3 px-4 py-3 text-sm transition-all duration-200 border-l-2",
     isActive ? "border-l-[#0a0a0a] font-semibold text-[#0a0a0a] bg-[#f0ebe2]" : "border-l-transparent text-[#8c8277] hover:text-[#0a0a0a] hover:bg-[#f0ebe2]/50"
   ].join(" ");
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login", { replace: true });
+  };
+
   return <div className="min-h-screen" style={{ backgroundColor: "#fafafa" }}>
     {
       /* Mobile header */
@@ -81,23 +107,23 @@ function AccountLayout() {
     >
       <div className="px-6 py-4 flex items-center gap-3 border-b" style={{ borderColor: "#f0ebe2" }}>
         <img
-          src={mockUser.avatar}
-          alt={mockUser.name}
+          src={userObj.avatar}
+          alt={userObj.name}
           className="w-10 h-10 rounded-full object-cover"
         />
         <div>
           <p className="text-sm font-semibold" style={{ color: "#0a0a0a", fontFamily: "Manrope, sans-serif" }}>
-            {mockUser.name}
+            {userObj.name}
           </p>
           <span
             className="text-xs px-2 py-0.5 rounded-full"
             style={{
-              backgroundColor: tierColor[mockUser.tier] + "22",
-              color: tierColor[mockUser.tier],
+              backgroundColor: tierColor[userObj.tier] ? tierColor[userObj.tier] + "22" : "#c9b99a22",
+              color: tierColor[userObj.tier] || "#c9b99a",
               fontFamily: "Manrope, sans-serif"
             }}
           >
-            {mockUser.tier} Member
+            {userObj.tier} Member
           </span>
         </div>
       </div>
@@ -117,7 +143,7 @@ function AccountLayout() {
           type="button"
           className="w-full flex items-center gap-3 px-4 py-3 text-sm border-l-2 border-l-transparent"
           style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}
-          onClick={() => navigate("/login")}
+          onClick={handleLogout}
         >
           <FiLogOut size={16} />
           Logout
@@ -141,30 +167,30 @@ function AccountLayout() {
             >
               <div className="flex flex-col items-center text-center">
                 <img
-                  src={mockUser.avatar}
-                  alt={mockUser.name}
+                  src={userObj.avatar}
+                  alt={userObj.name}
                   className="w-20 h-20 rounded-full object-cover mb-3"
                 />
                 <h3
                   className="font-semibold text-sm mb-1"
                   style={{ color: "#0a0a0a", fontFamily: "Manrope, sans-serif" }}
                 >
-                  {mockUser.name}
+                  {userObj.name}
                 </h3>
                 <p
                   className="text-xs mb-3"
                   style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}
                 >
-                  {mockUser.email}
+                  {userObj.email}
                 </p>
                 <span
                   className="text-xs px-3 py-1 uppercase tracking-widest font-semibold"
                   style={{
-                    backgroundColor: tierColor[mockUser.tier],
+                    backgroundColor: tierColor[userObj.tier] || "#c9b99a",
                     color: "#fafafa"
                   }}
                 >
-                  {mockUser.tier}
+                  {userObj.tier}
                 </span>
               </div>
             </div>
@@ -186,6 +212,7 @@ function AccountLayout() {
               <div className="border-t" style={{ borderColor: "#f0ebe2" }} />
               <button
                 type="button"
+                onClick={handleLogout}
                 className="w-full flex items-center gap-3 px-4 py-3 text-sm border-l-2 border-l-transparent transition-all duration-200 hover:bg-[#f0ebe2]/50"
                 style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}
               >

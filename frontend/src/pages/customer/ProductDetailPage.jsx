@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiHeart, FiChevronLeft, FiChevronRight, FiChevronDown, FiChevronUp, FiTruck, FiRotateCcw } from "react-icons/fi";
-import { products } from "../../data/products";
+import { productApi } from "../../services/api";
 import { useCart } from "../../context/CartContext";
 import { useWishlist } from "../../context/WishlistContext";
 const mockReviews = [
@@ -24,11 +24,16 @@ function StarRating({ rating, size = "sm" }) {
 function ProductDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const product = products.find((p) => p.id === id) || products[0];
   const { addItem } = useCart();
   const { toggle, isWishlisted } = useWishlist();
+
+  const [product, setProduct] = useState(null);
+  const [relatedProducts, setRelatedProducts] = useState([]);
+  const [apiLoading, setApiLoading] = useState(true);
+  const [apiError, setApiError] = useState("");
+
   const [selectedImage, setSelectedImage] = useState(0);
-  const [selectedColor, setSelectedColor] = useState(product.colors[0]);
+  const [selectedColor, setSelectedColor] = useState(null);
   const [selectedSize, setSelectedSize] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [openAccordion, setOpenAccordion] = useState("Description");
@@ -36,10 +41,116 @@ function ProductDetailPage() {
   const [sizeError, setSizeError] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
   const [hovered, setHovered] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchProduct = async () => {
+      setApiLoading(true);
+      setApiError("");
+      try {
+        const res = await productApi.getProductBySlug(id);
+        if (cancelled) return;
+        const p = res.data ?? res;
+        
+        // Normalize product
+        const detailsVal = Array.isArray(p.details) 
+          ? p.details 
+          : (typeof p.details === 'string' ? (p.details.startsWith('[') ? JSON.parse(p.details) : [p.details]) : []);
+
+        const normalizedProduct = {
+          ...p,
+          id: p.id,
+          slug: p.slug,
+          name: p.name,
+          price: Number(p.basePrice),
+          originalPrice: p.originalPrice ? Number(p.originalPrice) : null,
+          isSale: Boolean(p.originalPrice && Number(p.originalPrice) > Number(p.basePrice)),
+          image: Array.isArray(p.images) ? p.images[0] : p.images,
+          images: Array.isArray(p.images) ? p.images : [p.images],
+          category: p.category?.name ?? p.category ?? "",
+          categorySlug: p.category?.slug ?? "",
+          collection: p.collection?.name ?? p.collection ?? "",
+          material: p.material,
+          description: p.description,
+          details: detailsVal,
+          colors: Array.isArray(p.variants)
+            ? [...new Map(p.variants.map((v) => [v.colorName, { name: v.colorName, hex: v.colorHex }])).values()]
+            : (p.colors ?? []),
+          sizes: Array.isArray(p.variants)
+            ? [...new Set(p.variants.map((v) => v.size))]
+            : (p.sizes ?? []),
+          inStock: Array.isArray(p.variants)
+            ? p.variants.some((v) => v.stockQuantity > 0)
+            : true,
+          rating: Number(p.avgRating ?? p.rating ?? 4.8),
+          reviewCount: Number(p.reviewCount ?? 12),
+        };
+
+        setProduct(normalizedProduct);
+        if (normalizedProduct.colors.length > 0) {
+          setSelectedColor(normalizedProduct.colors[0]);
+        }
+
+        // Fetch related products
+        try {
+          const categorySlug = p.category?.slug || normalizedProduct.categorySlug;
+          const relatedRes = await productApi.getProducts({ category: categorySlug, limit: 5 });
+          const items = relatedRes.data?.products ?? relatedRes.data ?? [];
+          const normalizedRelated = items
+            .filter((item) => item.id !== normalizedProduct.id)
+            .slice(0, 4)
+            .map((item) => ({
+              id: item.id,
+              name: item.name,
+              price: Number(item.basePrice),
+              originalPrice: item.originalPrice ? Number(item.originalPrice) : null,
+              isSale: Boolean(item.originalPrice && Number(item.originalPrice) > Number(item.basePrice)),
+              images: Array.isArray(item.images) ? item.images : [item.images],
+              colors: Array.isArray(item.variants)
+                ? [...new Map(item.variants.map((v) => [v.colorName, { name: v.colorName, hex: v.colorHex }])).values()]
+                : (item.colors ?? []),
+            }));
+          setRelatedProducts(normalizedRelated);
+        } catch (err) {
+          console.error("Failed to load related products", err);
+        }
+
+      } catch (err) {
+        if (!cancelled) {
+          setApiError(err.message || "Failed to load product details.");
+        }
+      } finally {
+        if (!cancelled) {
+          setApiLoading(false);
+        }
+      }
+    };
+
+    fetchProduct();
+    return () => { cancelled = true; };
+  }, [id]);
+
+  if (apiLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
+        <div className="w-8 h-8 rounded-full border-2 border-[#f0ebe2] border-t-[#2d4a3e] animate-spin" />
+      </div>
+    );
+  }
+
+  if (apiError || !product) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#fafafa] p-4 text-center">
+        <p className="font-display text-2xl text-red-600 mb-4">{apiError || "Product not found"}</p>
+        <Link to="/shop" className="underline text-sm hover:text-black transition-colors">Back to Shop</Link>
+      </div>
+    );
+  }
+
   const images = product.images && product.images.length > 0 ? product.images : [];
   const wishlisted = isWishlisted(product.id);
-  const relatedProducts = products.filter((p) => p.id !== product.id && p.category === product.category).slice(0, 4);
-  const displayRelated = relatedProducts.length >= 4 ? relatedProducts : products.filter((p) => p.id !== product.id).slice(0, 4);
+  const displayRelated = relatedProducts.length > 0 ? relatedProducts : [];
+
   function handlePrevImage() {
     setSelectedImage((prev) => prev === 0 ? images.length - 1 : prev - 1);
   }
@@ -52,12 +163,19 @@ function ProductDetailPage() {
       setTimeout(() => setSizeError(false), 800);
       return;
     }
+    // Match the selected size and color to a specific product variant
+    const matchedVariant = (product.variants || []).find(
+      (v) => v.size === selectedSize && v.colorName === (selectedColor?.name || selectedColor || "")
+    );
+    const productVariantId = matchedVariant?.id || (product.variants && product.variants[0]?.id) || null;
+
     addItem({
       productId: product.id,
+      productVariantId,
       name: product.name,
       price: product.price,
       size: selectedSize,
-      color: selectedColor.name,
+      color: selectedColor?.name || selectedColor || "",
       image: images[0],
       quantity
     });

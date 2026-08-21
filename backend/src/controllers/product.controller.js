@@ -115,8 +115,13 @@ const getProducts = asyncHandler(async (req, res) => {
 const getProductBySlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
+  const isNumericId = !isNaN(slug) && !isNaN(parseInt(slug));
+  const queryCondition = isNumericId
+    ? { id: parseInt(slug), status: "PUBLISHED" }
+    : { slug, status: "PUBLISHED" };
+
   const product = await Product.findOne({
-    where: { slug, status: "PUBLISHED" },
+    where: queryCondition,
     include: [
       { model: Category, as: "category", attributes: ["name", "slug"] },
       { model: Collection, as: "collection", attributes: ["name", "slug"] },

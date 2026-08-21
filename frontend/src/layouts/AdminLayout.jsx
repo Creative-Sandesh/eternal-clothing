@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, Suspense } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { useAuth } from "../context/AuthContext";
 import {
   FiHome,
   FiShoppingBag,
@@ -86,6 +87,7 @@ const pageTitles = {
   "/admin/settings": "Settings"
 };
 function AdminLayout() {
+  const { user, loading, logout, isAdmin } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -93,8 +95,21 @@ function AdminLayout() {
   const navigate = useNavigate();
   const notifRef = useRef(null);
   const profileRef = useRef(null);
+
+  useEffect(() => {
+    if (!loading && (!user || !isAdmin)) {
+      navigate("/login", { replace: true });
+    }
+  }, [user, loading, isAdmin, navigate]);
+
   const path = window.location.pathname;
   const title = pageTitles[path] ?? "Admin";
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login", { replace: true });
+  };
+
   useEffect(() => {
     function handleClick(e) {
       if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
@@ -103,6 +118,17 @@ function AdminLayout() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
+        <div className="w-8 h-8 rounded-full border-2 border-[#f0ebe2] border-t-[#2d4a3e] animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user || !isAdmin) return null;
+
   const notifications = [
     { id: 1, text: "New order #ET-2024-00428 placed", time: "2m ago", unread: true },
     { id: 2, text: "Low stock alert: Cashmere Beanie", time: "1h ago", unread: true },
@@ -158,14 +184,14 @@ function AdminLayout() {
   }
       <div className={`border-t border-white/10 p-4 flex items-center gap-3 ${collapsed && !isMobile ? "justify-center" : ""}`}>
         <div className="w-8 h-8 rounded-full bg-[#2d4a3e] flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-          AD
+          {(user?.firstName?.[0] || "") + (user?.lastName?.[0] || "") || "AD"}
         </div>
         {(!collapsed || isMobile) && <div className="flex-1 min-w-0">
-            <p className="text-white text-sm font-medium truncate">Admin User</p>
-            <p className="text-white/40 text-xs truncate">admin@eternal.com</p>
+            <p className="text-white text-sm font-medium truncate">{user ? `${user.firstName} ${user.lastName}` : "Admin User"}</p>
+            <p className="text-white/40 text-xs truncate">{user?.email || "admin@eternal.com"}</p>
           </div>}
         {(!collapsed || isMobile) && <button
-    onClick={() => navigate("/")}
+    onClick={handleLogout}
     className="text-white/40 hover:text-white transition-colors"
     title="Logout"
   >
@@ -286,8 +312,10 @@ function AdminLayout() {
     onClick={() => setProfileOpen(!profileOpen)}
     className="flex items-center gap-2 p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
   >
-                <div className="w-7 h-7 rounded-full bg-[#2d4a3e] flex items-center justify-center text-white text-xs font-bold">AD</div>
-                <span className="text-sm font-medium text-gray-700 hidden sm:block">Admin</span>
+                <div className="w-7 h-7 rounded-full bg-[#2d4a3e] flex items-center justify-center text-white text-xs font-bold">
+                  {(user?.firstName?.[0] || "") + (user?.lastName?.[0] || "") || "AD"}
+                </div>
+                <span className="text-sm font-medium text-gray-700 hidden sm:block">{user ? user.firstName : "Admin"}</span>
               </button>
               <AnimatePresence>
                 {profileOpen && <motion.div
@@ -298,8 +326,8 @@ function AdminLayout() {
     className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50"
   >
                     <div className="px-4 py-3 border-b border-gray-100">
-                      <p className="text-sm font-semibold text-gray-900">Admin User</p>
-                      <p className="text-xs text-gray-500">admin@eternal.com</p>
+                      <p className="text-sm font-semibold text-gray-900">{user ? `${user.firstName} ${user.lastName}` : "Admin User"}</p>
+                      <p className="text-xs text-gray-500">{user?.email || "admin@eternal.com"}</p>
                     </div>
                     <button className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50">
                       <FiUser size={14} /> My Profile
@@ -308,7 +336,7 @@ function AdminLayout() {
                       <FiSettings size={14} /> Settings
                     </button>
                     <button
-    onClick={() => navigate("/")}
+    onClick={handleLogout}
     className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 border-t border-gray-100"
   >
                       <FiLogOut size={14} /> Log out
