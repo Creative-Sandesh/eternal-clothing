@@ -22,3 +22,4 @@ const ConnectDB = async() => {
 }
 
 export {ConnectDB, sequelize}
+export default sequelize

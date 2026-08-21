@@ -1,24 +1,24 @@
-import User from "./User.js";
-import Address from "./Address.js";
+import User from "./users.model.js";
+import Address from "./address.model.js";
 
-import Category from "./Category.js";
-import Collection from "./Collection.js";
-import Product from "./Product.js";
-import ProductVariant from "./ProductVariant.js";
+import Category from "./category.model.js";
+import Collection from "./collection.model.js";
+import Product from "./product.model.js";
+import ProductVariant from "./productVariant.model.js";
 
-import Order from "./Order.js";
-import OrderItem from "./OrderItem.js";
+import Order from "./order.model.js";
+import OrderItem from "./orderItem.model.js";
 
-import Payment from "./Payment.js";
-import Coupon from "./Coupon.js";
+import Payment from "./payment.model.js";
+import Coupon from "./coupon.model.js";
 
-import Review from "./Review.js";
+import Review from "./review.model.js";
 
-import Wishlist from "./Wishlist.js";
-import WishlistItem from "./WishlistItem.js";
+import Wishlist from "./wishlist.model.js";
+import WishlistItem from "./wishlistItem.model.js";
 
-import Setting from "./Setting.js";
-import BlogPost from "./BlogPost.js";
+import Setting from "./settings.model.js";
+import BlogPost from "./blogpost.model.js";
 
 /*
 |--------------------------------------------------------------------------

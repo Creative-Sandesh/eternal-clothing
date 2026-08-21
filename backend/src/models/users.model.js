@@ -1,5 +1,7 @@
 import sequelize from "../db/index.js"
 import { DataTypes } from "sequelize"
+import bcrypt from "bcryptjs"
+import jwt from "jsonwebtoken"
 
 const User = sequelize.define("User", {
     id: {
@@ -63,5 +65,46 @@ const User = sequelize.define("User", {
     }
 
 )
+
+// Password hashing hook before save
+User.beforeSave(async (user) => {
+    if (user.changed('passwordHash')) {
+        const salt = await bcrypt.genSalt(10);
+        user.passwordHash = await bcrypt.hash(user.passwordHash, salt);
+    }
+});
+
+// Instance method to check password correctness
+User.prototype.isPasswordCorrect = async function(password) {
+    return await bcrypt.compare(password, this.passwordHash);
+};
+
+// Instance method to generate Access Token
+User.prototype.generateAccessToken = function() {
+    return jwt.sign(
+        {
+            id: this.id,
+            email: this.email,
+            role: this.role
+        },
+        process.env.ACCESS_TOKEN_SECRET,
+        {
+            expiresIn: process.env.ACCESS_TOKEN_EXPIRY
+        }
+    );
+};
+
+// Instance method to generate Refresh Token
+User.prototype.generateRefreshToken = function() {
+    return jwt.sign(
+        {
+            id: this.id
+        },
+        process.env.REFRESH_TOKEN_SECRET,
+        {
+            expiresIn: process.env.REFRESH_TOKEN_EXPIRY
+        }
+    );
+};
 
 export default User;
