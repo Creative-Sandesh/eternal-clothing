@@ -38,7 +38,7 @@ function ProductCard({ product, viewMode = "grid" }) {
   };
   if (viewMode === "list") {
     return <Link
-      to={`/products/${product.id}`}
+      to={`/product/${product.id}`}
       className="flex gap-6 border-b border-[#e0d9cc] py-6 group focus:outline-none"
       aria-label={`View ${product.name}`}
     >
@@ -111,7 +111,7 @@ function ProductCard({ product, viewMode = "grid" }) {
       </Link>;
   }
   return <Link
-    to={`/products/${product.id}`}
+    to={`/product/${product.id}`}
     className="group flex flex-col focus:outline-none"
     aria-label={`View ${product.name}`}
   >

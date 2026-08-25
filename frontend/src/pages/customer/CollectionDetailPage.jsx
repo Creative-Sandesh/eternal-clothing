@@ -1,19 +1,48 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiHeart } from "react-icons/fi";
-import { products, collections } from "../../data/products";
+import { collectionApi, productApi, normalizeProduct } from "../../services/api";
 function CollectionDetailPage() {
   const { slug } = useParams();
   const [sort, setSort] = useState("featured");
-  const collection = collections.find((c) => c.slug === slug);
-  const collectionName = collection?.name ?? slug;
-  let filtered = products.filter(
-    (p) => p.collection.toLowerCase().replace(/\s+/g, "-") === slug || p.collection === collectionName
-  );
-  if (sort === "price-asc") filtered = [...filtered].sort((a, b) => a.price - b.price);
-  else if (sort === "price-desc") filtered = [...filtered].sort((a, b) => b.price - a.price);
-  else if (sort === "newest") filtered = [...filtered].sort((a) => a.isNew ? -1 : 1);
+  const [collection, setCollection] = useState(null);
+  const [productsList, setProductsList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const [colRes, prodRes] = await Promise.all([
+          collectionApi.getBySlug(slug),
+          productApi.getProducts({ collection: slug, limit: 100 })
+        ]);
+        if (!active) return;
+        
+        const rawCol = colRes.data ?? colRes;
+        setCollection({
+          ...rawCol,
+          image: rawCol.imageUrl || rawCol.image || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=1200&h=800&fit=crop&auto=format",
+        });
+
+        const normalizedProds = (prodRes.data?.products ?? prodRes.data ?? []).map(normalizeProduct);
+        setProductsList(normalizedProds);
+      } catch (err) {
+        console.error("CollectionDetailPage: failed to load", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    loadData();
+    return () => { active = false; };
+  }, [slug]);
+
+  let filtered = [...productsList];
+  if (sort === "price-asc") filtered.sort((a, b) => a.price - b.price);
+  else if (sort === "price-desc") filtered.sort((a, b) => b.price - a.price);
+  else if (sort === "newest") filtered.sort((a, b) => (a.isNew ? -1 : 1));
   return <div className="bg-[#fafafa] min-h-screen">
       {
     /* Hero */
@@ -102,7 +131,7 @@ function CollectionDetailPage() {
                   </button>
                   {product.isNew && <span className="absolute top-3 left-3 bg-[#2d4a3e] text-white text-[10px] tracking-widest uppercase px-2 py-0.5">New</span>}
                 </div>
-                <Link to={`/products/${product.id}`}>
+                <Link to={`/product/${product.id}`}>
                   <p className="text-[#8c8277] text-[10px] tracking-widest uppercase mb-1">{product.category}</p>
                   <h3 className="text-[#0a0a0a] text-sm font-medium leading-snug hover:text-[#2d4a3e] transition-colors">{product.name}</h3>
                   <p className="text-[#0a0a0a] text-sm mt-1">£{product.price}</p>

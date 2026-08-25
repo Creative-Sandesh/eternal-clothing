@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiPlus, FiSearch, FiGrid, FiList, FiEdit2, FiTrash2, FiStar, FiChevronLeft, FiChevronRight } from "react-icons/fi";
-import { products } from "../../data/products";
+import { productApi } from "../../services/api";
 const categories = ["All", "Tops", "Bottoms", "Outerwear", "Knitwear", "Footwear", "Accessories"];
 const collections = ["All", "Essentials", "Heritage", "Archive", "Limited"];
 const statuses = ["All", "In Stock", "Low Stock", "Out of Stock"];
@@ -20,9 +20,29 @@ function ProductsListPage() {
   const [status, setStatus] = useState("All");
   const [selected, setSelected] = useState([]);
   const [page, setPage] = useState(1);
+  const [products, setProducts] = useState([]);
   const perPage = 8;
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchProducts = async () => {
+      try {
+        const res = await productApi.getProducts();
+        if (!active) return;
+        setProducts(res.data);
+        setLoading(false);
+      } catch (err) {
+        console.error("Failed to load products", err);
+        setLoading(false);
+      }
+    };
+    fetchProducts();
+    return () => { active = false; };
+  }, []);
+
   const filtered = products.filter((p) => {
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = p.name?.toLowerCase().includes(search.toLowerCase()) || p.sku?.toLowerCase().includes(search.toLowerCase());
     const matchCat = category === "All" || p.category === category;
     return matchSearch && matchCat;
   });

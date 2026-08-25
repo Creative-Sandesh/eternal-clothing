@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiSearch, FiX, FiHeart } from "react-icons/fi";
-import { products } from "../../data/products";
+import { productApi, normalizeProduct } from "../../services/api";
 function SearchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [inputValue, setInputValue] = useState(searchParams.get("q") ?? "");
@@ -11,10 +11,31 @@ function SearchPage() {
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
-  const results = query.trim().length > 0 ? products.filter((p) => {
-    const q = query.toLowerCase();
-    return p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || p.collection.toLowerCase().includes(q) || p.tags.some((t) => t.toLowerCase().includes(q));
-  }) : [];
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!query.trim()) {
+      setResults([]);
+      return;
+    }
+    let active = true;
+    const search = async () => {
+      setLoading(true);
+      try {
+        const res = await productApi.getProducts({ search: query, limit: 50 });
+        if (!active) return;
+        const normalized = (res.data?.products ?? res.data ?? []).map(normalizeProduct);
+        setResults(normalized);
+      } catch (err) {
+        console.error("SearchPage: failed to search", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    search();
+    return () => { active = false; };
+  }, [query]);
   function handleSubmit(e) {
     e.preventDefault();
     if (inputValue.trim()) {
@@ -114,7 +135,7 @@ function SearchPage() {
                       {product.isNew && <span className="absolute top-3 left-3 bg-[#2d4a3e] text-white text-[10px] tracking-widest uppercase px-2 py-0.5">New</span>}
                       {product.isSale && <span className="absolute top-3 left-3 bg-red-600 text-white text-[10px] tracking-widest uppercase px-2 py-0.5">Sale</span>}
                     </div>
-                    <Link to={`/products/${product.id}`} className="block">
+                    <Link to={`/product/${product.id}`} className="block">
                       <p className="text-[#8c8277] text-[10px] tracking-widest uppercase mb-1">{product.category}</p>
                       <h3 className="text-[#0a0a0a] text-sm font-medium leading-snug mb-1 hover:text-[#2d4a3e] transition-colors">{product.name}</h3>
                       <div className="flex items-center gap-2">

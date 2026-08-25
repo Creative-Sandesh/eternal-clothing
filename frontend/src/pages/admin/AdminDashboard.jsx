@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
@@ -16,8 +16,7 @@ import {
   CartesianGrid
 } from "recharts";
 import { FiTrendingUp, FiTrendingDown, FiArrowRight, FiAlertTriangle } from "react-icons/fi";
-import { revenueData, categoryRevenue, topProducts, statsCards } from "../../data/analytics";
-import { orders } from "../../data/orders";
+import { analyticsApi } from "../../services/api";
 const sparkData = [
   [40, 55, 48, 62, 58, 71, 68, 80, 76, 88],
   [120, 145, 132, 158, 148, 172, 165, 195, 188, 210],
@@ -49,13 +48,109 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 function AdminDashboard() {
   const [chartMode, setChartMode] = useState("revenue");
-  const recentOrders = orders.slice(0, 5);
+  const [stats, setStats] = useState(null);
+  const [salesHistory, setSalesHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchStats = async () => {
+      try {
+        const res = await analyticsApi.getDashboard();
+        if (!active) return;
+        setStats(res.data);
+      } catch (err) {
+        console.error("AdminDashboard: failed to load stats", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchStats();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const fetchSales = async () => {
+      try {
+        const res = await analyticsApi.getSales(30);
+        if (!active) return;
+        const daily = res.data?.dailyRevenue ?? [];
+        if (daily.length > 0) {
+          const mapped = daily.map(d => ({
+            month: d.date,
+            revenue: Number(d.revenue),
+            orders: Number(d.transactions),
+            target: 0
+          }));
+          setSalesHistory(mapped);
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchSales();
+    return () => { active = false; };
+  }, []);
+
+  const totalRevenue = stats?.revenue?.total ?? 0;
+  const totalOrders = stats?.orders?.total ?? 0;
+  const activeCustomers = stats?.customers?.total ?? 0;
+  const avgOrderValue = totalOrders > 0 ? (totalRevenue / totalOrders) : 0;
+
+  const liveStatsCards = [
+    {
+      label: "Total Revenue",
+      value: `£${totalRevenue.toLocaleString()}`,
+      change: stats?.revenue?.growthPercent >= 0 ? `+${stats?.revenue?.growthPercent}%` : `${stats?.revenue?.growthPercent}%`,
+      trend: (stats?.revenue?.growthPercent ?? 0) >= 0 ? "up" : "down"
+    },
+    {
+      label: "Total Orders",
+      value: totalOrders.toLocaleString(),
+      change: stats?.orders?.newThisMonth ? `+${stats?.orders?.newThisMonth} new` : "0 new",
+      trend: "up"
+    },
+    {
+      label: "Avg Order Value",
+      value: `£${avgOrderValue.toFixed(0)}`,
+      change: "--",
+      trend: "up"
+    },
+    {
+      label: "Active Customers",
+      value: activeCustomers.toLocaleString(),
+      change: stats?.customers?.newThisMonth ? `+${stats?.customers?.newThisMonth} new` : "0 new",
+      trend: "up"
+    }
+  ];
+
+  const recentOrdersList = (stats?.recentOrders ?? []).map(o => ({
+    id: o.id,
+    orderNumber: o.orderNumber || `ORD-${o.id}`,
+    customerName: o.user ? `${o.user.firstName} ${o.user.lastName}` : "Guest Customer",
+    status: o.status ? o.status.toLowerCase() : "pending",
+    total: Number(o.totalAmount || o.total || 0)
+  }));
+
+  const topProductsList = (stats?.topProducts ?? []).map((tp, idx) => ({
+    name: `Variant ID: ${tp.productVariantId}`,
+    sales: Number(tp.totalSold || 0),
+    revenue: 0,
+    growth: 0
+  }));
+
+  const chartData = salesHistory.length > 0 ? salesHistory : [
+    { month: "Jan", revenue: 0, orders: 0, target: 0 },
+    { month: "Feb", revenue: 0, orders: 0, target: 0 },
+    { month: "Mar", revenue: 0, orders: 0, target: 0 }
+  ];
   return <div className="space-y-6">
       {
     /* Stats Row */
   }
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {statsCards.map((card, i) => <motion.div
+        {liveStatsCards.map((card, i) => <motion.div
     key={card.label}
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
@@ -110,7 +205,7 @@ function AdminDashboard() {
           </div>
         </div>
         <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={revenueData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+          <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#2d4a3e" stopOpacity={0.15} />
@@ -158,7 +253,7 @@ function AdminDashboard() {
             </Link>
           </div>
           <div className="space-y-2">
-            {recentOrders.map((order) => <div key={order.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+            {recentOrdersList.map((order) => <div key={order.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{order.orderNumber}</p>
                   <p className="text-xs text-gray-500 truncate">{order.customerName}</p>
@@ -187,7 +282,7 @@ function AdminDashboard() {
             </Link>
           </div>
           <div className="space-y-3">
-            {topProducts.map((product, i) => <div key={product.name} className="flex items-center gap-3">
+            {topProductsList.map((product, i) => <div key={product.name} className="flex items-center gap-3">
                 <span className="w-5 text-xs font-bold text-gray-400 tabular-nums">{i + 1}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
@@ -209,38 +304,6 @@ function AdminDashboard() {
         {
     /* Category Revenue PieChart */
   }
-        <motion.div
-    initial={{ opacity: 0, y: 16 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: 0.48 }}
-    className="bg-white rounded-xl border border-gray-100 shadow-sm p-5"
-  >
-          <h2 className="font-semibold text-gray-900 mb-4">Revenue by Category</h2>
-          <div className="flex items-center gap-4">
-            <ResponsiveContainer width="50%" height={180}>
-              <PieChart>
-                <Pie
-    data={categoryRevenue}
-    cx="50%"
-    cy="50%"
-    innerRadius={50}
-    outerRadius={78}
-    paddingAngle={2}
-    dataKey="value"
-  >
-                  {categoryRevenue.map((entry, index) => <Cell key={index} fill={entry.color} />)}
-                </Pie>
-                <Tooltip formatter={(v) => [`${v}%`, ""]} />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex-1 space-y-2">
-              {categoryRevenue.map((cat) => <div key={cat.name} className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }} />
-                  <span className="text-xs text-gray-600 flex-1">{cat.name}</span>
-                  <span className="text-xs font-semibold text-gray-900">{cat.value}%</span>
-                </div>)}
-            </div>
-          </div>
         </motion.div>
 
         {

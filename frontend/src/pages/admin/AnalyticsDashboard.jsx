@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   AreaChart,
@@ -18,7 +18,7 @@ import {
   Legend
 } from "recharts";
 import { FiTrendingUp, FiRepeat, FiUsers, FiShoppingBag } from "react-icons/fi";
-import { revenueData, categoryRevenue, trafficData, topProducts } from "../../data/analytics";
+import { analyticsApi } from "../../services/api";
 const dateRanges = ["Last 7 days", "Last 30 days", "Last 90 days", "Custom"];
 const kpis = [
   { label: "Conversion Rate", value: "3.4%", sub: "+0.2% vs last period", icon: <FiTrendingUp size={18} />, up: true },
@@ -37,7 +37,45 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 function AnalyticsDashboard() {
   const [dateRange, setDateRange] = useState("Last 30 days");
-  return <div className="space-y-5">
+  const [chartData, setChartData] = useState([]);
+  const [categoryData, setCategoryData] = useState([]);
+  const [trafficData, setTrafficData] = useState([]);
+  const [topProductsData, setTopProductsData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchData = async () => {
+      try {
+        const dashboardRes = await analyticsApi.getDashboard();
+        const salesRes = await analyticsApi.getSales(30);
+        if (!active) return;
+        // Map sales data to chart format
+        const daily = salesRes.data?.dailyRevenue ?? [];
+        const mappedChart = daily.map(d => ({ month: d.date, revenue: Number(d.revenue), orders: Number(d.transactions), target: 0 }));
+        setChartData(mappedChart);
+        // Category and traffic data may be part of dashboard stats; using placeholders if missing
+        setCategoryData(dashboardRes.data?.categoryBreakdown || []);
+        setTrafficData(dashboardRes.data?.traffic || []);
+        setTopProductsData(dashboardRes.data?.topProducts || []);
+        setLoading(false);
+      } catch (err) {
+        console.error("AnalyticsDashboard fetch error", err);
+        setLoading(false);
+      }
+    };
+    fetchData();
+    return () => { active = false; };
+  }, []);
+
+  // Fallback to static data while loading or if API missing
+  const revenueChart = loading ? [] : chartData.length ? chartData : [];
+  const categoryRevenue = loading ? [] : (categoryData.length ? categoryData : []);
+  const trafficData = loading ? [] : (trafficData.length ? trafficData : []);
+  const topProducts = loading ? [] : (topProductsData.length ? topProductsData : []);
+
+  return (
+    <div className="space-y-5">
       {
     /* Header */
   }
@@ -91,7 +129,7 @@ function AnalyticsDashboard() {
   >
           <h2 className="font-semibold text-gray-900 mb-4">Revenue</h2>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={revenueData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+            <AreaChart data={revenueChart} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
               <defs>
                 <linearGradient id="aRevGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#2d4a3e" stopOpacity={0.15} />
@@ -121,7 +159,7 @@ function AnalyticsDashboard() {
   >
           <h2 className="font-semibold text-gray-900 mb-4">Orders</h2>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={revenueData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+            <BarChart data={revenueChart} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
               <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
@@ -242,8 +280,8 @@ function AnalyticsDashboard() {
           </table>
         </div>
       </motion.div>
-    </div>;
-}
+    </div>
+);
 export {
   AnalyticsDashboard as default
 };

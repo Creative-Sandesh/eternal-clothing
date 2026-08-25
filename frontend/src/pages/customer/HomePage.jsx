@@ -10,7 +10,7 @@ import {
   FiChevronUp,
   FiStar,
 } from "react-icons/fi";
-import { products, categories, collections } from "../../data/products";
+import { productApi, categoryApi, collectionApi, normalizeProduct } from "../../services/api";
 import { useCart } from "../../context/CartContext";
 
 // ----------------------------------------------------------------------
@@ -284,13 +284,54 @@ function HomePage() {
   const [isAtStart, setIsAtStart] = useState(true);
   const [isAtEnd, setIsAtEnd] = useState(false);
 
+  const [productsList, setProductsList] = useState([]);
+  const [categoriesList, setCategoriesList] = useState([]);
+  const [collectionsList, setCollectionsList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
   const isMobile = useMediaQuery("(max-width: 768px)");
 
-  const featuredProducts = products.slice(0, 4);
-  const newArrivals = products.filter((p) => p.isNew).slice(0, 6);
-  const displayNewArrivals = newArrivals.length >= 4 ? newArrivals : products.slice(0, 4);
+  useEffect(() => {
+    let active = true;
+    const fetchData = async () => {
+      try {
+        const [prodRes, catRes, colRes] = await Promise.all([
+          productApi.getProducts({ limit: 100 }),
+          categoryApi.getAll(),
+          collectionApi.getAll()
+        ]);
+        if (!active) return;
+        const normalized = (prodRes.data?.products ?? prodRes.data ?? []).map(normalizeProduct);
+        setProductsList(normalized);
+        
+        const normalizedCats = (catRes.data?.categories ?? catRes.data ?? []).map(c => ({
+          ...c,
+          image: c.imageUrl || c.image || "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=600&h=800&fit=crop&auto=format",
+          count: c.count || 12
+        }));
+        setCategoriesList(normalizedCats);
 
-  const firstTwoCollections = collections.slice(0, 2);
+        const normalizedCols = (colRes.data?.collections ?? colRes.data ?? []).map(c => ({
+          ...c,
+          image: c.imageUrl || c.image || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=1200&h=800&fit=crop&auto=format",
+          count: c.count || 18
+        }));
+        setCollectionsList(normalizedCols);
+      } catch (err) {
+        console.error("HomePage: Failed to load data", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchData();
+    return () => { active = false; };
+  }, []);
+
+  const featuredProducts = productsList.slice(0, 4);
+  const newArrivals = productsList.filter((p) => p.isNew).slice(0, 6);
+  const displayNewArrivals = newArrivals.length >= 4 ? newArrivals : productsList.slice(0, 4);
+
+  const firstTwoCollections = collectionsList.slice(0, 2);
 
   const collectionRef = useRef(null);
   const { scrollYProgress } = useScroll({
@@ -468,7 +509,7 @@ function HomePage() {
           Shop by Category
         </motion.h2>
         <div className="grid grid-cols-2 md:grid-cols-4 auto-rows-[200px] md:auto-rows-[240px] gap-3">
-          {categories.map((cat, i) => {
+          {categoriesList.map((cat, i) => {
             const isFeatured = i === 0;
             return (
               <motion.div

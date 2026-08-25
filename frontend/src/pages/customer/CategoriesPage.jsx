@@ -1,8 +1,33 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiArrowRight } from "react-icons/fi";
-import { categories } from "../../data/products";
+import { categoryApi } from "../../services/api";
+import { useState, useEffect } from "react";
 function CategoriesPage() {
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchCats = async () => {
+      try {
+        const res = await categoryApi.getAll();
+        if (!active) return;
+        const normalized = (res.data?.categories ?? res.data ?? []).map(c => ({
+          ...c,
+          image: c.imageUrl || c.image || "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=600&h=800&fit=crop&auto=format",
+          count: c.count || 12
+        }));
+        setCategories(normalized);
+      } catch (err) {
+        console.error("CategoriesPage: failed to fetch categories", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchCats();
+    return () => { active = false; };
+  }, []);
   return <div className="min-h-screen" style={{ backgroundColor: "#fafafa", fontFamily: "Manrope, sans-serif" }}>
       {
     /* Editorial header */

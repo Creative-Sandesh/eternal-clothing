@@ -3,35 +3,31 @@ import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiShoppingBag, FiX, FiPlus, FiMinus, FiArrowLeft, FiTag } from "react-icons/fi";
 import { useCart } from "../../context/CartContext";
-import { products } from "../../data/products";
+import { productApi, normalizeProduct } from "../../services/api";
 function CartPage() {
   const { items, addItem, removeItem, updateQuantity, total, count } = useCart();
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
   const [promoError, setPromoError] = useState(false);
+  const [suggestedProducts, setSuggestedProducts] = useState([]);
   const navigate = useNavigate();
+
   useEffect(() => {
-    if (items.length === 0) {
-      addItem({
-        productId: "p1",
-        name: "Oversized Cotton Poplin Shirt",
-        price: 185,
-        size: "M",
-        color: "Chalk White",
-        image: "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=800&h=1067&fit=crop&auto=format",
-        quantity: 1
-      });
-      addItem({
-        productId: "p4",
-        name: "Merino Crewneck Knit",
-        price: 220,
-        size: "S",
-        color: "Ivory",
-        image: "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?w=800&h=1067&fit=crop&auto=format",
-        quantity: 1
-      });
-    }
-  }, [items.length]);
+    let active = true;
+    const fetchSuggested = async () => {
+      try {
+        const res = await productApi.getProducts({ limit: 4 });
+        if (!active) return;
+        const normalized = (res.data?.products ?? res.data ?? []).map(normalizeProduct);
+        setSuggestedProducts(normalized);
+      } catch (err) {
+        console.error("CartPage: failed to fetch suggestions", err);
+      }
+    };
+    fetchSuggested();
+    return () => { active = false; };
+  }, []);
+
   const handleApplyPromo = () => {
     setPromoError(false);
     setPromoApplied(false);
@@ -44,7 +40,6 @@ function CartPage() {
   const shipping = total >= 200 ? 0 : 8;
   const tax = total * 0.2;
   const grandTotal = total + shipping + tax;
-  const suggestedProducts = products.slice(0, 4);
   if (items.length === 0) {
     return <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center gap-6 px-4">
         <FiShoppingBag size={64} className="text-[#8c8277]" />

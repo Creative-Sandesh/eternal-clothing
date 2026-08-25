@@ -142,3 +142,47 @@ export const settingsApi = {
   get: (key) => request(`/settings/${key}`),
   upsert: (key, value) => request(`/settings/${key}`, { method: "PUT", body: JSON.stringify({ value }) }),
 };
+
+// ─── Normalizer ───────────────────────────────────────────────────────────────
+export const normalizeProduct = (p) => {
+  if (!p) return null;
+  if (p.id && typeof p.id === "string" && p.id.startsWith("p")) {
+    return p;
+  }
+  const images = Array.isArray(p.images) ? p.images : (p.images ? [p.images] : []);
+  const basePrice = Number(p.basePrice || p.price || 0);
+  const originalPrice = p.originalPrice ? Number(p.originalPrice) : null;
+  
+  let colors = p.colors || [];
+  let sizes = p.sizes || [];
+  let inStock = p.inStock !== undefined ? p.inStock : true;
+  
+  const variants = p.variants || p.ProductVariants || [];
+  if (Array.isArray(variants) && variants.length > 0) {
+    colors = [...new Map(variants.map((v) => [v.colorName ?? v.color_name, { name: v.colorName ?? v.color_name, hex: v.colorHex ?? v.color_hex }])).values()];
+    sizes = [...new Set(variants.map((v) => v.size))];
+    inStock = variants.some((v) => (v.stockQuantity ?? v.stock_quantity) > 0);
+  }
+
+  return {
+    ...p,
+    id: p.id,
+    slug: p.slug,
+    name: p.name,
+    price: basePrice,
+    originalPrice,
+    isSale: Boolean(originalPrice && originalPrice > basePrice),
+    image: images[0] || "",
+    images,
+    category: p.category?.name ?? p.Category?.name ?? p.category ?? "",
+    collection: p.collection?.name ?? p.Collection?.name ?? p.collection ?? "",
+    material: p.material || "",
+    colors,
+    sizes,
+    inStock,
+    rating: Number(p.avgRating ?? p.rating ?? 0),
+    reviewCount: Number(p.reviewCount ?? 0),
+    isNew: p.isNew || false,
+    isBestSeller: p.isBestSeller || false,
+  };
+};

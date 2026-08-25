@@ -6,6 +6,7 @@ import OrderItem from "../models/orderItem.model.js";
 import Product from "../models/product.model.js";
 import Payment from "../models/payment.model.js";
 import Review from "../models/review.model.js";
+import Category from "../models/category.model.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
@@ -93,6 +94,42 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     ? 100
     : (((monthlyRevenue - lastMonthRevenue) / lastMonthRevenue) * 100).toFixed(2);
 
+  // Category revenue breakdown (sum of product price * quantity for completed payments)
+  const categoryRevenue = await Category.findAll({
+    attributes: [
+      ["name", "category"],
+      [fn('SUM', literal('"orderItems"."quantity" * "products"."price"')), 'revenue']
+    ],
+    include: [{
+      model: Product,
+      as: 'products',
+      attributes: [],
+      include: [{
+        model: ProductVariant,
+        as: 'variants',
+        attributes: [],
+        include: [{
+          model: OrderItem,
+          as: 'orderItems',
+          attributes: [],
+          include: [{
+            model: Order,
+            as: 'order',
+            attributes: [],
+            include: [{
+              model: Payment,
+              as: 'payment',
+              where: { status: 'COMPLETED' },
+              attributes: []
+            }]
+          }]
+        }]
+      }]
+    }],
+    group: ['Category.id'],
+    raw: true
+  });
+
   return res.status(200).json(
     new ApiResponse(
       200,
@@ -117,7 +154,8 @@ const getDashboardStats = asyncHandler(async (req, res) => {
         },
         pendingReviews,
         recentOrders,
-        topProducts
+        topProducts,
+        categoryRevenue
       },
       "Dashboard stats fetched successfully"
     )

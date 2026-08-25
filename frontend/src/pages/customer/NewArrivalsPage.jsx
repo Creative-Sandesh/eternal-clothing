@@ -1,9 +1,30 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiHeart } from "react-icons/fi";
-import { products } from "../../data/products";
-const newProducts = products.filter((p) => p.isNew);
+import { productApi, normalizeProduct } from "../../services/api";
+import { useState, useEffect } from "react";
 function NewArrivalsPage() {
+  const [newProducts, setNewProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchNew = async () => {
+      try {
+        const res = await productApi.getProducts({ sort: "newest", limit: 100 });
+        if (!active) return;
+        const normalized = (res.data?.products ?? res.data ?? []).map(normalizeProduct);
+        const onlyNew = normalized.filter((p) => p.isNew);
+        setNewProducts(onlyNew.length > 0 ? onlyNew : normalized.slice(0, 8));
+      } catch (err) {
+        console.error("NewArrivalsPage: failed to fetch new arrivals", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchNew();
+    return () => { active = false; };
+  }, []);
   return <div className="bg-[#fafafa] min-h-screen">
       {
     /* Header */
@@ -65,14 +86,14 @@ function NewArrivalsPage() {
                 </button>
                 <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-[#0a0a0a]/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                   <Link
-    to={`/products/${product.id}`}
+    to={`/product/${product.id}`}
     className="block w-full bg-[#fafafa] text-[#0a0a0a] text-xs tracking-[0.15em] uppercase text-center py-2.5 hover:bg-[#f0ebe2] transition-colors"
   >
                     Quick View
                   </Link>
                 </div>
               </div>
-              <Link to={`/products/${product.id}`} className="block">
+              <Link to={`/product/${product.id}`} className="block">
                 <p className="text-[#8c8277] text-[10px] tracking-widest uppercase mb-1">{product.category}</p>
                 <h3 className="text-[#0a0a0a] text-sm font-medium leading-snug mb-1 hover:text-[#2d4a3e] transition-colors">{product.name}</h3>
                 <p className="text-[#0a0a0a] text-sm">£{product.price}</p>

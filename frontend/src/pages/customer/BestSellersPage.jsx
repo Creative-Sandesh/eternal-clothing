@@ -1,9 +1,30 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiHeart, FiStar } from "react-icons/fi";
-import { products } from "../../data/products";
-const bestSellers = products.filter((p) => p.isBestSeller);
+import { productApi, normalizeProduct } from "../../services/api";
+import { useState, useEffect } from "react";
 function BestSellersPage() {
+  const [bestSellers, setBestSellers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchBestSellers = async () => {
+      try {
+        const res = await productApi.getProducts({ limit: 100 });
+        if (!active) return;
+        const normalized = (res.data?.products ?? res.data ?? []).map(normalizeProduct);
+        const filtered = normalized.filter((p) => p.isBestSeller);
+        setBestSellers(filtered.length > 0 ? filtered : normalized.slice(0, 8));
+      } catch (err) {
+        console.error("BestSellersPage: failed to fetch best sellers", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchBestSellers();
+    return () => { active = false; };
+  }, []);
   return <div className="bg-[#fafafa] min-h-screen">
       {
     /* Header */
@@ -62,14 +83,14 @@ function BestSellersPage() {
                 </button>
                 <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-[#0a0a0a]/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                   <Link
-    to={`/products/${product.id}`}
+    to={`/product/${product.id}`}
     className="block w-full bg-[#fafafa] text-[#0a0a0a] text-xs tracking-[0.1em] uppercase text-center py-2 hover:bg-[#f0ebe2] transition-colors"
   >
                     Shop Now
                   </Link>
                 </div>
               </div>
-              <Link to={`/products/${product.id}`} className="block">
+              <Link to={`/product/${product.id}`} className="block">
                 <p className="text-[#8c8277] text-[10px] tracking-widest uppercase mb-1">{product.category}</p>
                 <h3 className="text-[#0a0a0a] text-sm font-medium leading-snug mb-1 hover:text-[#2d4a3e] transition-colors">{product.name}</h3>
                 <div className="flex items-center gap-1.5 mb-1">

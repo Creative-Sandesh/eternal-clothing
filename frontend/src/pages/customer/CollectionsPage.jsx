@@ -1,7 +1,32 @@
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { collections } from "../../data/products";
+import { collectionApi } from "../../services/api";
+import { useState, useEffect } from "react";
 function CollectionsPage() {
+  const [collections, setCollections] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchCols = async () => {
+      try {
+        const res = await collectionApi.getAll();
+        if (!active) return;
+        const normalized = (res.data?.collections ?? res.data ?? []).map(c => ({
+          ...c,
+          image: c.imageUrl || c.image || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=1200&h=800&fit=crop&auto=format",
+          count: c.count || 18
+        }));
+        setCollections(normalized);
+      } catch (err) {
+        console.error("CollectionsPage: failed to fetch collections", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchCols();
+    return () => { active = false; };
+  }, []);
   return <div className="bg-[#fafafa] min-h-screen">
       {
     /* Hero */
