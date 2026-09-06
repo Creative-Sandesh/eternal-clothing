@@ -37,9 +37,14 @@ function ProductsListPage() {
         setLoading(false);
       }
     };
-    fetchProducts();
-    return () => { active = false; };
-  }, []);
+  const handleDeleteProduct = async (id) => {
+    try {
+      await productApi.deleteProduct(id);
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      console.error("Failed to delete product", err);
+    }
+  };
 
   const filtered = products.filter((p) => {
     const matchSearch = p.name?.toLowerCase().includes(search.toLowerCase()) || p.sku?.toLowerCase().includes(search.toLowerCase());

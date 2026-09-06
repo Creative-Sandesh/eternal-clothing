@@ -1,38 +1,72 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { FiPackage, FiAlertTriangle, FiXCircle, FiCheckCircle, FiSearch } from "react-icons/fi";
-const inventoryData = [
-  { id: "1", name: "Oversized Cotton Poplin Shirt", sku: "ET-001-WHT", category: "Tops", stock: 42, maxStock: 100, status: "in_stock", lastUpdated: "2024-11-10" },
-  { id: "2", name: "Relaxed Wool Trouser", sku: "ET-002-CML", category: "Bottoms", stock: 18, maxStock: 60, status: "in_stock", lastUpdated: "2024-11-12" },
-  { id: "3", name: "Heavyweight Fleece Hoodie", sku: "ET-003-VBK", category: "Tops", stock: 7, maxStock: 80, status: "low_stock", lastUpdated: "2024-11-13" },
-  { id: "4", name: "Merino Crewneck Knit", sku: "ET-004-STN", category: "Knitwear", stock: 3, maxStock: 50, status: "low_stock", lastUpdated: "2024-11-14" },
-  { id: "5", name: "Unstructured Linen Blazer", sku: "ET-005-SND", category: "Outerwear", stock: 29, maxStock: 40, status: "in_stock", lastUpdated: "2024-11-08" },
-  { id: "6", name: "Slim Straight Selvedge Denim", sku: "ET-006-IND", category: "Bottoms", stock: 0, maxStock: 60, status: "out_of_stock", lastUpdated: "2024-11-09" },
-  { id: "7", name: "Washed Canvas Overshirt", sku: "ET-007-OLV", category: "Tops", stock: 54, maxStock: 70, status: "in_stock", lastUpdated: "2024-11-11" },
-  { id: "8", name: "Cashmere Ribbed Beanie", sku: "ET-008-BLK", category: "Accessories", stock: 5, maxStock: 120, status: "low_stock", lastUpdated: "2024-11-14" },
-  { id: "9", name: "Wide-Leg Linen Trouser", sku: "ET-009-ECR", category: "Bottoms", stock: 11, maxStock: 50, status: "in_stock", lastUpdated: "2024-11-10" },
-  { id: "10", name: "Leather Chelsea Boot", sku: "ET-010-BLK", category: "Footwear", stock: 0, maxStock: 30, status: "out_of_stock", lastUpdated: "2024-11-07" },
-  { id: "11", name: "Ribbed Tank Top", sku: "ET-011-WHT", category: "Tops", stock: 89, maxStock: 150, status: "in_stock", lastUpdated: "2024-11-13" },
-  { id: "12", name: "Wool-Blend Overcoat", sku: "ET-012-CHR", category: "Outerwear", stock: 8, maxStock: 25, status: "low_stock", lastUpdated: "2024-11-12" }
-];
+import { inventoryApi } from "../../services/api";
+
 const statusConfig = {
   in_stock: { label: "In Stock", badge: "bg-green-100 text-green-700", icon: <FiCheckCircle size={12} /> },
   low_stock: { label: "Low Stock", badge: "bg-amber-100 text-amber-700", icon: <FiAlertTriangle size={12} /> },
   out_of_stock: { label: "Out of Stock", badge: "bg-red-100 text-red-600", icon: <FiXCircle size={12} /> }
 };
+
 function InventoryPage() {
   const [search, setSearch] = useState("");
-  const [restocked, setRestocked] = useState([]);
-  const filtered = inventoryData.filter(
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchInventory = async () => {
+    try {
+      setLoading(true);
+      const res = await inventoryApi.getAll();
+      const mapped = (res.data || []).map((v) => {
+        const qty = Number(v.stockQuantity || 0);
+        const status = qty === 0 ? "out_of_stock" : qty < 10 ? "low_stock" : "in_stock";
+        return {
+          id: v.id,
+          name: v.product?.name || `Product Variant #${v.id}`,
+          sku: v.sku || `SKU-${v.id}`,
+          category: v.product?.category?.name || "General",
+          stock: qty,
+          maxStock: 100,
+          status,
+          lastUpdated: new Date(v.updatedAt || Date.now()).toISOString().split("T")[0]
+        };
+      });
+      setItems(mapped);
+    } catch (err) {
+      console.error("Failed to fetch inventory", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchInventory();
+  }, []);
+
+  const handleRestock = async (id, currentQty) => {
+    try {
+      const newQty = currentQty + 50;
+      await inventoryApi.updateVariant(id, { stockQuantity: newQty });
+      setItems((prev) => prev.map((item) => item.id === id ? {
+        ...item,
+        stock: newQty,
+        status: "in_stock"
+      } : item));
+    } catch (err) {
+      console.error("Failed to restock variant", err);
+    }
+  };
+  const filtered = items.filter(
     (item) => item.name.toLowerCase().includes(search.toLowerCase()) || item.sku.toLowerCase().includes(search.toLowerCase()) || item.category.toLowerCase().includes(search.toLowerCase())
   );
   const summaryCards = [
-    { label: "Total SKUs", value: inventoryData.length, icon: <FiPackage size={20} />, color: "bg-blue-50 text-blue-600" },
-    { label: "In Stock", value: inventoryData.filter((i) => i.status === "in_stock").length, icon: <FiCheckCircle size={20} />, color: "bg-green-50 text-green-600" },
-    { label: "Low Stock (< 10)", value: inventoryData.filter((i) => i.status === "low_stock").length, icon: <FiAlertTriangle size={20} />, color: "bg-amber-50 text-amber-600" },
-    { label: "Out of Stock", value: inventoryData.filter((i) => i.status === "out_of_stock").length, icon: <FiXCircle size={20} />, color: "bg-red-50 text-red-600" }
+    { label: "Total SKUs", value: items.length, icon: <FiPackage size={20} />, color: "bg-blue-50 text-blue-600" },
+    { label: "In Stock", value: items.filter((i) => i.status === "in_stock").length, icon: <FiCheckCircle size={20} />, color: "bg-green-50 text-green-600" },
+    { label: "Low Stock (< 10)", value: items.filter((i) => i.status === "low_stock").length, icon: <FiAlertTriangle size={20} />, color: "bg-amber-50 text-amber-600" },
+    { label: "Out of Stock", value: items.filter((i) => i.status === "out_of_stock").length, icon: <FiXCircle size={20} />, color: "bg-red-50 text-red-600" }
   ];
-  const alertItems = inventoryData.filter((i) => i.status !== "in_stock");
+  const alertItems = items.filter((i) => i.status !== "in_stock");
   return <div className="space-y-5">
       <div>
         <h1 className="font-display text-2xl text-gray-900">Inventory</h1>

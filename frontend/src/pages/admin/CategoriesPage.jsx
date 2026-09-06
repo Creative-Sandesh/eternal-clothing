@@ -1,38 +1,86 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiEdit2, FiTrash2, FiPlus, FiAlertCircle, FiSave, FiX, FiMove } from "react-icons/fi";
-const initialCategories = [
-  { id: "1", name: "Tops", slug: "tops", productCount: 24, status: "Active" },
-  { id: "2", name: "Bottoms", slug: "bottoms", productCount: 18, status: "Active" },
-  { id: "3", name: "Outerwear", slug: "outerwear", productCount: 12, status: "Active" },
-  { id: "4", name: "Knitwear", slug: "knitwear", productCount: 9, status: "Active" },
-  { id: "5", name: "Footwear", slug: "footwear", productCount: 8, status: "Active" },
-  { id: "6", name: "Accessories", slug: "accessories", productCount: 15, status: "Active" }
-];
+import { categoryApi } from "../../services/api";
+
 function CategoriesPage() {
-  const [categories, setCategories] = useState(initialCategories);
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [newCategory, setNewCategory] = useState({ name: "", slug: "", status: "Active" });
   const [editValues, setEditValues] = useState({});
+
+  const fetchCategories = async () => {
+    try {
+      setLoading(true);
+      const res = await categoryApi.getAll();
+      const mapped = (res.data || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        productCount: Number(c.productCount || 0),
+        status: "Active"
+      }));
+      setCategories(mapped);
+    } catch (err) {
+      console.error("Failed to load categories", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
   const totalProducts = categories.reduce((sum, c) => sum + c.productCount, 0);
   const activeCount = categories.filter((c) => c.status === "Active").length;
-  function handleAdd() {
+
+  async function handleAdd() {
     if (!newCategory.name) return;
-    const slug = newCategory.slug || newCategory.name.toLowerCase().replace(/\s+/g, "-");
-    setCategories([...categories, { id: Date.now().toString(), name: newCategory.name, slug, productCount: 0, status: newCategory.status }]);
+    try {
+      const res = await categoryApi.create({
+        name: newCategory.name,
+        description: ""
+      });
+      if (res.data) {
+        setCategories([...categories, {
+          id: res.data.id,
+          name: res.data.name,
+          slug: res.data.slug,
+          productCount: 0,
+          status: newCategory.status
+        }]);
+      }
+    } catch (err) {
+      console.error("Failed to add category", err);
+    }
     setNewCategory({ name: "", slug: "", status: "Active" });
     setShowAddForm(false);
   }
-  function handleDelete(id) {
-    setCategories(categories.filter((c) => c.id !== id));
+
+  async function handleDelete(id) {
+    try {
+      await categoryApi.delete(id);
+      setCategories(categories.filter((c) => c.id !== id));
+    } catch (err) {
+      console.error("Failed to delete category", err);
+    }
   }
+
   function startEdit(cat) {
     setEditingId(cat.id);
     setEditValues({ name: cat.name, slug: cat.slug, status: cat.status });
   }
-  function saveEdit(id) {
-    setCategories(categories.map((c) => c.id === id ? { ...c, ...editValues } : c));
+
+  async function saveEdit(id) {
+    try {
+      await categoryApi.update(id, { name: editValues.name });
+      setCategories(categories.map((c) => c.id === id ? { ...c, ...editValues } : c));
+    } catch (err) {
+      console.error("Failed to update category", err);
+    }
     setEditingId(null);
   }
   return <div className="space-y-6">

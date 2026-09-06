@@ -2,14 +2,10 @@ import { useState, useEffect } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiHeart, FiChevronLeft, FiChevronRight, FiChevronDown, FiChevronUp, FiTruck, FiRotateCcw } from "react-icons/fi";
-import { productApi } from "../../services/api";
+import { productApi, reviewApi } from "../../services/api";
 import { useCart } from "../../context/CartContext";
 import { useWishlist } from "../../context/WishlistContext";
-const mockReviews = [
-  { id: 1, name: "Emma S.", rating: 5, date: "March 2025", text: "Absolutely impeccable quality. The fabric feels luxurious and the fit is exactly as described." },
-  { id: 2, name: "James H.", rating: 5, date: "February 2025", text: "Worth every penny. Beautifully constructed and the colour is even more refined in person." },
-  { id: 3, name: "Sofia M.", rating: 4, date: "January 2025", text: "Elegant and well-made. Sizing is generous which I appreciate for layering." }
-];
+
 function StarRating({ rating, size = "sm" }) {
   const sizeClass = size === "md" ? "text-base" : "text-sm";
   return <div className={`flex items-center gap-0.5 ${sizeClass}`}>
@@ -42,6 +38,8 @@ function ProductDetailPage() {
   const [addedToCart, setAddedToCart] = useState(false);
   const [hovered, setHovered] = useState(false);
 
+  const [reviewsList, setReviewsList] = useState([]);
+
   useEffect(() => {
     let cancelled = false;
     const fetchProduct = async () => {
@@ -52,6 +50,22 @@ function ProductDetailPage() {
         if (cancelled) return;
         const p = res.data ?? res;
         
+        // Fetch reviews
+        if (p.id) {
+          reviewApi.getProductReviews(p.id).then((rRes) => {
+            if (!cancelled && rRes.data) {
+              const mapped = rRes.data.map(r => ({
+                id: r.id,
+                name: r.user ? `${r.user.firstName || ''} ${r.user.lastName || ''}`.trim() || "Verified Buyer" : "Customer",
+                rating: Number(r.rating || 5),
+                date: new Date(r.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+                text: r.comment || r.body || ""
+              }));
+              setReviewsList(mapped);
+            }
+          }).catch(console.error);
+        }
+
         // Normalize product
         const detailsVal = Array.isArray(p.details) 
           ? p.details 
@@ -569,10 +583,10 @@ function ProductDetailPage() {
   >
               <div className="flex items-baseline gap-4 mb-8">
                 <h3 className="font-display text-2xl text-[#0a0a0a]">Customer Reviews</h3>
-                <span className="text-sm text-[#8c8277]">{mockReviews.length} reviews</span>
+                <span className="text-sm text-[#8c8277]">{reviewsList.length} reviews</span>
               </div>
               <div className="space-y-8 max-w-2xl">
-                {mockReviews.map((review) => <div key={review.id} className="border-b border-[#f0ebe2] pb-8 last:border-0">
+                {reviewsList.length === 0 ? <p className="text-sm text-[#8c8277]">No reviews yet for this product.</p> : reviewsList.map((review) => <div key={review.id} className="border-b border-[#f0ebe2] pb-8 last:border-0">
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-medium text-sm text-[#0a0a0a]">{review.name}</span>
                       <span className="text-xs text-[#8c8277]">{review.date}</span>

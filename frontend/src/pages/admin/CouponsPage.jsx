@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiPlus, FiEdit2, FiTrash2, FiCopy, FiX, FiSave, FiRefreshCw, FiCheck } from "react-icons/fi";
+import { couponApi } from "../../services/api";
 const initialCoupons = [
   { id: "1", code: "ETERNAL10", type: "Percentage", value: 10, used: 148, limit: void 0, expiry: void 0, status: "Active" },
   { id: "2", code: "WELCOME20", type: "Percentage", value: 20, used: 67, limit: 100, expiry: "2025-06-30", status: "Active" },
@@ -44,24 +45,46 @@ function CouponsPage() {
     setCopied(code);
     setTimeout(() => setCopied(null), 1500);
   }
-  function handleCreate() {
+
+  async function handleCreate() {
     if (!form.code || !form.value) return;
-    setCoupons([...coupons, {
-      id: Date.now().toString(),
-      code: form.code.toUpperCase(),
-      type: form.type,
-      value: parseFloat(form.value),
-      minOrder: form.minOrder ? parseFloat(form.minOrder) : void 0,
-      used: 0,
-      limit: form.limit ? parseInt(form.limit) : void 0,
-      expiry: form.expiry || void 0,
-      status: form.status
-    }]);
+    try {
+      const payload = {
+        code: form.code.toUpperCase(),
+        discountType: form.type === "Percentage" ? "PERCENTAGE" : "FIXED",
+        discountValue: parseFloat(form.value),
+        minPurchaseAmount: form.minOrder ? parseFloat(form.minOrder) : 0,
+        maxUses: form.limit ? parseInt(form.limit) : null,
+        expiresAt: form.expiry || null
+      };
+      const res = await couponApi.create(payload);
+      if (res.data) {
+        setCoupons([...coupons, {
+          id: res.data.id,
+          code: res.data.code,
+          type: form.type,
+          value: parseFloat(form.value),
+          minOrder: form.minOrder ? parseFloat(form.minOrder) : void 0,
+          used: 0,
+          limit: form.limit ? parseInt(form.limit) : void 0,
+          expiry: form.expiry || void 0,
+          status: form.status
+        }]);
+      }
+    } catch (err) {
+      console.error("Failed to create coupon", err);
+    }
     setForm({ code: "", type: "Percentage", value: "", minOrder: "", limit: "", expiry: "", categories: [], status: "Active" });
     setShowForm(false);
   }
-  function deleteCoupon(id) {
-    setCoupons(coupons.filter((c) => c.id !== id));
+
+  async function deleteCoupon(id) {
+    try {
+      await couponApi.delete(id);
+      setCoupons(coupons.filter((c) => c.id !== id));
+    } catch (err) {
+      console.error("Failed to delete coupon", err);
+    }
   }
   return <div className="space-y-6">
       {

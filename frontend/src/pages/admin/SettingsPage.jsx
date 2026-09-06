@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { FiGlobe, FiTruck, FiPercent, FiCreditCard, FiMail, FiShield, FiLayout, FiToggleRight, FiToggleLeft } from "react-icons/fi";
+import { settingsApi } from "../../services/api";
 const tabs = [
   { value: "general", label: "General", icon: <FiGlobe size={15} /> },
   { value: "shipping", label: "Shipping", icon: <FiTruck size={15} /> },
@@ -47,9 +48,23 @@ const Toggle = ({ label, description, defaultOn = false }) => {
       </button>
     </div>;
 };
-const SaveButton = () => <button className="px-6 py-2.5 bg-[#0a0a0a] text-white text-sm font-medium rounded-xl hover:bg-[#2d4a3e] transition-colors">
-    Save Changes
-  </button>;
+const SaveButton = () => {
+  const [saved, setSaved] = useState(false);
+  const handleSave = async () => {
+    try {
+      await settingsApi.upsert("general_settings", { updatedAt: new Date().toISOString() });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      console.error("Failed to save settings", err);
+    }
+  };
+  return (
+    <button onClick={handleSave} className="px-6 py-2.5 bg-[#0a0a0a] text-white text-sm font-medium rounded-xl hover:bg-[#2d4a3e] transition-colors">
+      {saved ? "Saved!" : "Save Changes"}
+    </button>
+  );
+};
 function GeneralTab() {
   return <div className="space-y-5">
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4">

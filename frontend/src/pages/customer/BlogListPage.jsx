@@ -1,7 +1,10 @@
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiClock, FiArrowRight } from "react-icons/fi";
-const posts = [
+import { blogApi } from "../../services/api";
+
+const initialPosts = [
   {
     slug: "the-art-of-slow-fashion",
     category: "Philosophy",
@@ -80,9 +83,42 @@ const posts = [
     featured: false
   }
 ];
-const featured = posts.find((p) => p.featured);
-const grid = posts.filter((p) => !p.featured);
+const featuredFallback = initialPosts.find((p) => p.featured) || initialPosts[0];
+const gridFallback = initialPosts.filter((p) => !p.featured);
+
 function BlogListPage() {
+  const [posts, setPosts] = useState(initialPosts);
+
+  useEffect(() => {
+    let active = true;
+    const fetchBlogs = async () => {
+      try {
+        const res = await blogApi.getAll();
+        if (!active) return;
+        if (res.data && res.data.length > 0) {
+          const mapped = res.data.map((b, i) => ({
+            slug: b.slug,
+            category: b.category || "Journal",
+            title: b.title,
+            excerpt: b.excerpt || b.content?.slice(0, 140) || "",
+            date: new Date(b.createdAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+            readTime: "5 min read",
+            author: b.author || "Editorial Team",
+            image: b.image || "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=1200&h=700&fit=crop&auto=format",
+            featured: i === 0
+          }));
+          setPosts(mapped);
+        }
+      } catch (err) {
+        console.error("Failed to fetch blogs", err);
+      }
+    };
+    fetchBlogs();
+    return () => { active = false; };
+  }, []);
+
+  const featured = posts.find((p) => p.featured) || posts[0];
+  const grid = posts.filter((p) => p.slug !== featured?.slug);
   return <div className="bg-[#fafafa] min-h-screen">
       {
     /* Header */

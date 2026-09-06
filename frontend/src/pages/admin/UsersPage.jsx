@@ -1,13 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { FiPlus, FiEdit2, FiTrash2, FiCheck, FiX, FiMail, FiShield, FiSave } from "react-icons/fi";
+import { userApi } from "../../services/api";
+
 const TABS = ["Staff", "Roles", "Permissions"];
-const staffList = [
-  { id: "1", name: "Isabelle Fontaine", email: "isabelle@eternal.com", role: "Owner", status: "Active", lastLogin: "2025-01-15 09:42", initials: "IF", color: "#2d4a3e" },
-  { id: "2", name: "Tom Bridges", email: "tom@eternal.com", role: "Admin", status: "Active", lastLogin: "2025-01-15 08:17", initials: "TB", color: "#8c8277" },
-  { id: "3", name: "Sarah Kim", email: "sarah@eternal.com", role: "Inventory Manager", status: "Active", lastLogin: "2025-01-14 16:03", initials: "SK", color: "#c9b99a" },
-  { id: "4", name: "Dev Patel", email: "dev@eternal.com", role: "Customer Support", status: "Inactive", lastLogin: "2025-01-10 11:29", initials: "DP", color: "#6b7280" }
-];
+
 const roles = [
   { id: "1", name: "Owner", description: "Full access to all areas of the store", staffCount: 1, permissions: "All permissions" },
   { id: "2", name: "Admin", description: "Manage all store operations except billing", staffCount: 1, permissions: "Most permissions" },
@@ -23,11 +20,42 @@ const permMatrix = {
   "Customer Support": [false, true, true, false, false, false, false],
   "Marketing Manager": [false, false, false, true, true, false, false]
 };
+
 function UsersPage() {
   const [tab, setTab] = useState("Staff");
   const [inviteEmail, setInviteEmail] = useState("");
   const [showInvite, setShowInvite] = useState(false);
   const [matrix, setMatrix] = useState(permMatrix);
+  const [staff, setStaff] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchStaff = async () => {
+      try {
+        setLoading(true);
+        const res = await userApi.getCustomers();
+        if (!active) return;
+        const mapped = (res.data || []).map((u) => ({
+          id: u.id,
+          name: `${u.firstName || ""} ${u.lastName || ""}`.trim() || "Staff Member",
+          email: u.email,
+          role: u.role || "Admin",
+          status: "Active",
+          lastLogin: new Date(u.updatedAt || Date.now()).toLocaleDateString("en-GB", { day: "2-digit", month: "short", hour: "2-digit" }),
+          initials: `${(u.firstName || "S")[0]}${(u.lastName || "M")[0]}`,
+          color: "#2d4a3e"
+        }));
+        setStaff(mapped);
+      } catch (err) {
+        console.error("Failed to load staff list", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchStaff();
+    return () => { active = false; };
+  }, []);
   const [showRoleForm, setShowRoleForm] = useState(false);
   const [newRole, setNewRole] = useState({ name: "", description: "" });
   function togglePerm(role, idx) {
@@ -111,7 +139,7 @@ function UsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {staffList.map((s) => <tr key={s.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/30 transition-colors">
+                {staff.map((s) => <tr key={s.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/30 transition-colors">
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ backgroundColor: s.color }}>
