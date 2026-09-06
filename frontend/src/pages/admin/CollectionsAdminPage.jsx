@@ -1,20 +1,18 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiPlus, FiEdit2, FiTrash2, FiGrid, FiList, FiX, FiImage, FiSave } from "react-icons/fi";
-import { products } from "../../data/products";
-const initialCollections = [
-  { id: "1", name: "Essentials", slug: "essentials", productCount: 32, startDate: "2024-01-01", endDate: "2024-12-31", status: "Active" },
-  { id: "2", name: "Archive", slug: "archive", productCount: 18, startDate: "2023-01-01", endDate: "2024-12-31", status: "Active" },
-  { id: "3", name: "Summer Edit", slug: "summer-edit", productCount: 14, startDate: "2024-06-01", endDate: "2024-09-30", status: "Active" },
-  { id: "4", name: "Denim", slug: "denim", productCount: 8, startDate: "2024-03-01", endDate: "2024-12-31", status: "Active" }
-];
+import { collectionApi, productApi } from "../../services/api";
+
 const statusColors = {
   Active: "bg-[#2d4a3e]/10 text-[#2d4a3e]",
   Draft: "bg-gray-100 text-gray-500",
   Scheduled: "bg-blue-50 text-blue-600"
 };
+
 function CollectionsAdminPage() {
-  const [collections, setCollections] = useState(initialCollections);
+  const [collections, setCollections] = useState([]);
+  const [productsList, setProductsList] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [view, setView] = useState("table");
   const [showPanel, setShowPanel] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState([]);
@@ -26,29 +24,77 @@ function CollectionsAdminPage() {
     endDate: "",
     status: "Active"
   });
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [colsRes, prodsRes] = await Promise.all([
+        collectionApi.getAll().catch(() => ({ data: [] })),
+        productApi.getProducts().catch(() => ({ data: [] }))
+      ]);
+      const fetchedCols = (colsRes.data || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        productCount: Number(c.productCount || 0),
+        startDate: c.createdAt ? new Date(c.createdAt).toISOString().split("T")[0] : "2024-01-01",
+        endDate: "2025-12-31",
+        status: "Active"
+      }));
+      setCollections(fetchedCols);
+      setProductsList(prodsRes.data?.products || prodsRes.data || []);
+    } catch (err) {
+      console.error("Failed to load collections", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
   function handleNameChange(name) {
     setForm({ ...form, name, slug: name.toLowerCase().replace(/\s+/g, "-") });
   }
+
   function toggleProduct(id) {
     setSelectedProducts((prev) => prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]);
   }
-  function handleCreate() {
+
+  async function handleCreate() {
     if (!form.name) return;
-    setCollections([...collections, {
-      id: Date.now().toString(),
-      name: form.name,
-      slug: form.slug || form.name.toLowerCase().replace(/\s+/g, "-"),
-      productCount: selectedProducts.length,
-      startDate: form.startDate,
-      endDate: form.endDate,
-      status: form.status
-    }]);
+    try {
+      const res = await collectionApi.create({
+        name: form.name,
+        description: form.description
+      });
+      if (res.data) {
+        setCollections((prev) => [...prev, {
+          id: res.data.id,
+          name: res.data.name,
+          slug: res.data.slug,
+          productCount: selectedProducts.length,
+          startDate: form.startDate || new Date().toISOString().split("T")[0],
+          endDate: form.endDate || "2025-12-31",
+          status: form.status
+        }]);
+      }
+    } catch (err) {
+      console.error("Failed to create collection", err);
+    }
     setForm({ name: "", slug: "", description: "", startDate: "", endDate: "", status: "Active" });
     setSelectedProducts([]);
     setShowPanel(false);
   }
-  function deleteCollection(id) {
-    setCollections(collections.filter((c) => c.id !== id));
+
+  async function deleteCollection(id) {
+    try {
+      await collectionApi.delete(id);
+      setCollections(collections.filter((c) => c.id !== id));
+    } catch (err) {
+      console.error("Failed to delete collection", err);
+    }
   }
   return <div className="space-y-6">
       {
@@ -185,7 +231,7 @@ function CollectionsAdminPage() {
                 <div>
                   <label className="text-xs text-[#8c8277] font-medium block mb-2">Products ({selectedProducts.length} selected)</label>
                   <div className="border border-gray-200 rounded-lg max-h-48 overflow-y-auto divide-y divide-gray-50">
-                    {products.slice(0, 16).map((p) => <label key={p.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
+                    {productsList.slice(0, 16).map((p) => <label key={p.id} className="flex items-center gap-2.5 px-3 py-2 hover:bg-gray-50 cursor-pointer">
                         <input
     type="checkbox"
     checked={selectedProducts.includes(p.id)}

@@ -301,10 +301,7 @@ function AdminDashboard() {
     /* Two-column: Category PieChart + Low Stock */
   }
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {
-    /* Category Revenue PieChart */
-  }
-        </motion.div>
+        {/* Low Stock Alerts */}
 
         {
     /* Low Stock Alerts */

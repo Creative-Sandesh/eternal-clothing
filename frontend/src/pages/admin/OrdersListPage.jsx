@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FiSearch, FiDownload, FiEye, FiPrinter, FiRefreshCw, FiCalendar } from "react-icons/fi";
-import { orders } from "../../data/orders";
+import { orderApi } from "../../services/api";
+
 const statusColors = {
+  pending: "bg-amber-100 text-amber-700",
   processing: "bg-amber-100 text-amber-700",
   confirmed: "bg-blue-100 text-blue-700",
   shipped: "bg-purple-100 text-purple-700",
@@ -10,19 +12,49 @@ const statusColors = {
   cancelled: "bg-red-100 text-red-700",
   refunded: "bg-gray-100 text-gray-600"
 };
+
 const tabs = [
   { label: "All", value: "all" },
+  { label: "Pending", value: "pending" },
   { label: "Processing", value: "processing" },
   { label: "Confirmed", value: "confirmed" },
   { label: "Shipped", value: "shipped" },
   { label: "Delivered", value: "delivered" },
-  { label: "Cancelled", value: "cancelled" },
-  { label: "Refunded", value: "refunded" }
+  { label: "Cancelled", value: "cancelled" }
 ];
+
 function OrdersListPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("all");
   const [search, setSearch] = useState("");
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchOrders = async () => {
+    try {
+      setLoading(true);
+      const res = await orderApi.getAdminOrders();
+      const fetched = (res.data || []).map((o) => ({
+        id: o.id,
+        orderNumber: o.orderNumber || `ORD-${o.id}`,
+        customerName: o.user ? `${o.user.firstName || ""} ${o.user.lastName || ""}`.trim() || "Customer" : "Guest",
+        customerEmail: o.user?.email || "",
+        items: Array.isArray(o.items) ? o.items : [],
+        total: Number(o.totalAmount || o.total || 0),
+        status: (o.status || "pending").toLowerCase(),
+        createdAt: o.createdAt
+      }));
+      setOrders(fetched);
+    } catch (err) {
+      console.error("Failed to load admin orders", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
   const counts = tabs.reduce((acc, t) => {
     acc[t.value] = t.value === "all" ? orders.length : orders.filter((o) => o.status === t.value).length;
     return acc;

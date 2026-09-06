@@ -1,15 +1,19 @@
+import { useState, useEffect } from "react";
 import { Link, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiArrowLeft, FiPackage, FiTruck, FiCheck, FiMapPin, FiCreditCard, FiHelpCircle, FiRotateCcw } from "react-icons/fi";
-import { orders } from "../../data/orders";
+import { orderApi } from "../../services/api";
+
 const statusSteps = [
   { key: "processing", label: "Processing" },
   { key: "confirmed", label: "Confirmed" },
   { key: "shipped", label: "Shipped" },
   { key: "delivered", label: "Delivered" }
 ];
+
 function getStepIndex(status) {
   const map = {
+    pending: 0,
     processing: 0,
     confirmed: 1,
     shipped: 2,
@@ -17,7 +21,9 @@ function getStepIndex(status) {
   };
   return map[status] ?? 0;
 }
+
 const statusStyles = {
+  pending: { bg: "#f0ebe2", text: "#8c8277" },
   processing: { bg: "#f0ebe2", text: "#8c8277" },
   confirmed: { bg: "#e8f0ee", text: "#2d4a3e" },
   shipped: { bg: "#dbeafe", text: "#1d4ed8" },
@@ -25,9 +31,58 @@ const statusStyles = {
   cancelled: { bg: "#fef2f2", text: "#b91c1c" },
   refunded: { bg: "#fef2f2", text: "#b91c1c" }
 };
+
 function OrderDetailPage() {
   const { id } = useParams();
-  const order = orders.find((o) => o.id === id);
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchOrder = async () => {
+      try {
+        const res = await orderApi.getMyOrderById(id);
+        if (!active) return;
+        const raw = res.data;
+        if (raw) {
+          const rawStatus = (raw.status || "pending").toLowerCase();
+          const items = Array.isArray(raw.items) ? raw.items.map(i => ({
+            name: i.productName || i.name || "Product Item",
+            size: i.size || "Default",
+            color: i.color || "Default",
+            quantity: i.quantity || 1,
+            price: Number(i.unitPrice || i.price || 0),
+            image: i.image || ""
+          })) : [];
+          const shippingAddress = typeof raw.shippingAddress === "string" ? JSON.parse(raw.shippingAddress) : (raw.shippingAddress || { line1: "Address on file", city: "", zip: "", country: "" });
+          setOrder({
+            id: raw.id,
+            orderNumber: raw.orderNumber || `ORD-${raw.id}`,
+            status: rawStatus,
+            createdAt: raw.createdAt,
+            trackingNumber: raw.trackingNumber,
+            carrier: raw.carrier || "DHL Express",
+            items,
+            subtotal: Number(raw.subtotalAmount || raw.subtotal || 0),
+            shipping: Number(raw.shippingFee || raw.shipping || 0),
+            tax: Number(raw.taxAmount || raw.tax || 0),
+            total: Number(raw.totalAmount || raw.total || 0),
+            shippingAddress
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load order detail", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchOrder();
+    return () => { active = false; };
+  }, [id]);
+
+  if (loading) {
+    return <div className="py-24 text-center text-[#8c8277]">Loading order details...</div>;
+  }
   if (!order) {
     return <div className="flex flex-col items-center justify-center py-24 text-center">
         <FiPackage size={40} style={{ color: "#c9b99a" }} className="mb-4" />

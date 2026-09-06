@@ -71,7 +71,6 @@ function AnalyticsDashboard() {
   // Fallback to static data while loading or if API missing
   const revenueChart = loading ? [] : chartData.length ? chartData : [];
   const categoryRevenue = loading ? [] : (categoryData.length ? categoryData : []);
-  const trafficData = loading ? [] : (trafficData.length ? trafficData : []);
   const topProducts = loading ? [] : (topProductsData.length ? topProductsData : []);
 
   return (
@@ -281,7 +280,8 @@ function AnalyticsDashboard() {
         </div>
       </motion.div>
     </div>
-);
+  );
+}
 export {
   AnalyticsDashboard as default
 };

@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiArrowLeft, FiPrinter, FiTruck, FiPackage, FiCheck, FiClock, FiMapPin, FiMail } from "react-icons/fi";
-import { orders } from "../../data/orders";
+import { orderApi } from "../../services/api";
+
 const statusColors = {
+  pending: "bg-amber-100 text-amber-700",
   processing: "bg-amber-100 text-amber-700",
   confirmed: "bg-blue-100 text-blue-700",
   shipped: "bg-purple-100 text-purple-700",
@@ -11,20 +13,88 @@ const statusColors = {
   cancelled: "bg-red-100 text-red-700",
   refunded: "bg-gray-100 text-gray-600"
 };
-const statuses = ["processing", "confirmed", "shipped", "delivered", "cancelled", "refunded"];
+
+const statuses = ["PENDING", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"];
+
 const timelineEvents = (order) => [
   { label: "Order Placed", time: order.createdAt, icon: <FiPackage size={14} />, done: true },
-  { label: "Order Confirmed", time: order.status !== "processing" ? order.updatedAt : null, icon: <FiCheck size={14} />, done: ["confirmed", "shipped", "delivered"].includes(order.status) },
-  { label: "Shipped", time: order.trackingNumber ? order.updatedAt : null, icon: <FiTruck size={14} />, done: ["shipped", "delivered"].includes(order.status) },
-  { label: "Delivered", time: order.status === "delivered" ? order.updatedAt : null, icon: <FiCheck size={14} />, done: order.status === "delivered" }
+  { label: "Order Confirmed", time: order.status !== "PENDING" && order.status !== "PROCESSING" ? order.updatedAt : null, icon: <FiCheck size={14} />, done: ["CONFIRMED", "SHIPPED", "DELIVERED"].includes(order.status) },
+  { label: "Shipped", time: order.trackingNumber ? order.updatedAt : null, icon: <FiTruck size={14} />, done: ["SHIPPED", "DELIVERED"].includes(order.status) },
+  { label: "Delivered", time: order.status === "DELIVERED" ? order.updatedAt : null, icon: <FiCheck size={14} />, done: order.status === "DELIVERED" }
 ];
+
 function OrderDetailAdminPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const order = orders.find((o) => o.id === id) ?? orders[0];
-  const [status, setStatus] = useState(order.status);
+  const [order, setOrder] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("PENDING");
   const [note, setNote] = useState("");
-  const [tracking, setTracking] = useState(order.trackingNumber ?? "");
+  const [tracking, setTracking] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const fetchOrder = async () => {
+      try {
+        const res = await orderApi.getAdminOrders();
+        if (!active) return;
+        const found = (res.data || []).find(o => String(o.id) === String(id));
+        if (found) {
+          const formatted = {
+            id: found.id,
+            orderNumber: found.orderNumber || `ORD-${found.id}`,
+            status: found.status || "PENDING",
+            createdAt: found.createdAt,
+            updatedAt: found.updatedAt,
+            customerName: found.user ? `${found.user.firstName || ""} ${found.user.lastName || ""}`.trim() || "Customer" : "Guest",
+            customerEmail: found.user?.email || "",
+            trackingNumber: found.trackingNumber || "",
+            carrier: found.carrier || "DHL Express",
+            subtotal: Number(found.subtotalAmount || 0),
+            shipping: Number(found.shippingFee || 0),
+            tax: Number(found.taxAmount || 0),
+            total: Number(found.totalAmount || 0),
+            items: Array.isArray(found.items) ? found.items.map(i => ({
+              name: i.productName || i.name || "Item",
+              size: i.size || "Default",
+              color: i.color || "Default",
+              quantity: i.quantity || 1,
+              price: Number(i.unitPrice || i.price || 0),
+              image: i.image || ""
+            })) : [],
+            shippingAddress: typeof found.shippingAddress === "string" ? JSON.parse(found.shippingAddress) : (found.shippingAddress || { line1: "Address on file", city: "", zip: "", country: "" })
+          };
+          setOrder(formatted);
+          setStatus(formatted.status);
+          setTracking(formatted.trackingNumber);
+        }
+      } catch (err) {
+        console.error("Failed to load order details", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchOrder();
+    return () => { active = false; };
+  }, [id]);
+
+  const handleUpdateStatus = async (newStatus) => {
+    try {
+      setSaving(true);
+      await orderApi.updateStatus(id, { status: newStatus, trackingNumber: tracking });
+      setStatus(newStatus);
+      if (order) setOrder({ ...order, status: newStatus, trackingNumber: tracking });
+    } catch (err) {
+      console.error("Failed to update status", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="py-24 text-center text-gray-500">Loading order details...</div>;
+  if (!order) return <div className="py-24 text-center text-gray-500">Order not found</div>;
+
   return <div className="space-y-5">
       {
     /* Header */
@@ -72,7 +142,8 @@ function OrderDetailAdminPage() {
             <div className="flex gap-2 flex-wrap">
               {statuses.map((s) => <button
     key={s}
-    onClick={() => setStatus(s)}
+    disabled={saving}
+    onClick={() => handleUpdateStatus(s)}
     className={`px-3 py-1.5 text-xs font-medium rounded-lg border capitalize transition-all ${status === s ? "bg-[#0a0a0a] text-white border-[#0a0a0a]" : "border-gray-200 text-gray-600 hover:border-gray-400"}`}
   >
                   {s}

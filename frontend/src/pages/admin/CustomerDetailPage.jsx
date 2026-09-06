@@ -1,33 +1,85 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { FiArrowLeft, FiEdit2, FiStar, FiMapPin, FiMail, FiPhone, FiShoppingBag, FiAward, FiMessageSquare, FiSend } from "react-icons/fi";
-import { customers } from "../../data/customers";
-import { orders } from "../../data/orders";
+import { userApi, orderApi } from "../../services/api";
+
 const tierColors = {
   Bronze: "bg-amber-100 text-amber-700",
   Silver: "bg-gray-100 text-gray-600",
   Gold: "bg-yellow-100 text-yellow-700",
   Platinum: "bg-[#2d4a3e]/10 text-[#2d4a3e]"
 };
+
 const mockReviews = [
   { id: "1", product: "Oversized Cotton Poplin Shirt", rating: 5, comment: "Exceptional quality. The fabric is incredibly luxurious.", date: "2024-12-10" },
   { id: "2", product: "Relaxed Wool Trouser", rating: 4, comment: "Great fit and finish. Highly recommend.", date: "2024-11-02" }
 ];
+
 const mockActivity = [
-  { id: "1", event: "Placed order #ET-2024-00412", time: "3 days ago", icon: <FiShoppingBag size={12} /> },
-  { id: "2", event: "Left a 5-star review", time: "1 week ago", icon: <FiStar size={12} /> },
-  { id: "3", event: "Redeemed 500 loyalty points", time: "2 weeks ago", icon: <FiAward size={12} /> },
-  { id: "4", event: "Added new shipping address", time: "1 month ago", icon: <FiMapPin size={12} /> },
-  { id: "5", event: "Subscribed to newsletter", time: "3 months ago", icon: <FiMail size={12} /> }
+  { id: "1", event: "Placed order", time: "Recent", icon: <FiShoppingBag size={12} /> },
+  { id: "2", event: "Left a review", time: "Recent", icon: <FiStar size={12} /> },
+  { id: "3", event: "Account active", time: "Now", icon: <FiAward size={12} /> }
 ];
+
 function CustomerDetailPage() {
   const { id } = useParams();
-  const customer = customers.find((c) => c.id === id) ?? customers[0];
-  const customerOrders = orders.filter((o) => o.customerId === customer.id).slice(0, 5);
+  const [customer, setCustomer] = useState(null);
+  const [customerOrders, setCustomerOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [note, setNote] = useState("");
   const [notes, setNotes] = useState([
-    { text: "VIP customer \u2014 always add a handwritten note to their orders.", date: "2024-11-15" }
+    { text: "VIP customer account.", date: new Date().toISOString().split("T")[0] }
   ]);
+
+  useEffect(() => {
+    let active = true;
+    const fetchCustomerData = async () => {
+      try {
+        setLoading(true);
+        const [cRes, oRes] = await Promise.all([
+          userApi.getCustomerById(id).catch(() => null),
+          orderApi.getAdminOrders().catch(() => ({ data: [] }))
+        ]);
+        if (!active) return;
+        if (cRes?.data) {
+          const c = cRes.data;
+          setCustomer({
+            id: c.id,
+            name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || "Customer",
+            email: c.email || "",
+            phone: c.phone || "N/A",
+            tier: c.role === "ADMIN" ? "Platinum" : "Silver",
+            joinedAt: new Date(c.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+            totalOrders: Number(c.orderCount || 0),
+            totalSpent: Number(c.totalSpent || 0),
+            loyaltyPoints: Number(c.loyaltyPoints || 150),
+            tags: [c.role || "CUSTOMER"],
+            address: { line1: "123 High Street", city: "London", zip: "EC1A 1BB", country: "United Kingdom" }
+          });
+        }
+        const filteredOrders = (oRes?.data || [])
+          .filter(o => String(o.userId) === String(id))
+          .map(o => ({
+            id: o.id,
+            orderNumber: o.orderNumber || `ORD-${o.id}`,
+            createdAt: new Date(o.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+            items: o.items || [],
+            total: Number(o.totalAmount || o.total || 0),
+            status: (o.status || "pending").toLowerCase()
+          }));
+        setCustomerOrders(filteredOrders);
+      } catch (err) {
+        console.error("Failed to load customer detail", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchCustomerData();
+    return () => { active = false; };
+  }, [id]);
+
+  if (loading) return <div className="py-24 text-center text-[#8c8277]">Loading customer details...</div>;
+  if (!customer) return <div className="py-24 text-center text-[#8c8277]">Customer not found</div>;
   const avgOrderValue = customer.totalOrders > 0 ? Math.round(customer.totalSpent / customer.totalOrders) : 0;
   function addNote() {
     if (!note.trim()) return;

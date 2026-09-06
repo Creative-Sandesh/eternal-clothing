@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { FiStar, FiCheck, FiX, FiFlag, FiMessageSquare, FiShield } from "react-icons/fi";
-import { reviews } from "../../data/reviews";
-const tabCounts = (tab) => reviews.filter((r) => r.status === tab).length;
+import { reviewApi } from "../../services/api";
+
 const StarRating = ({ rating }) => <div className="flex gap-0.5">
     {[1, 2, 3, 4, 5].map((s) => <FiStar
   key={s}
@@ -10,6 +10,7 @@ const StarRating = ({ rating }) => <div className="flex gap-0.5">
   className={s <= rating ? "text-amber-400 fill-amber-400" : "text-gray-200 fill-gray-200"}
 />)}
   </div>;
+
 const ReviewCard = ({ review, onApprove, onReject, onFlag }) => <motion.div
   initial={{ opacity: 0, y: 8 }}
   animate={{ opacity: 1, y: 0 }}
@@ -19,7 +20,7 @@ const ReviewCard = ({ review, onApprove, onReject, onFlag }) => <motion.div
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div className="flex items-start gap-3 flex-1 min-w-0">
           <div className="w-9 h-9 rounded-full bg-[#f0ebe2] flex items-center justify-center text-[#2d4a3e] font-bold text-sm flex-shrink-0">
-            {review.customerName.split(" ").map((n) => n[0]).join("")}
+            {(review.customerName || "U").split(" ").map((n) => n[0]).join("")}
           </div>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
@@ -38,9 +39,6 @@ const ReviewCard = ({ review, onApprove, onReject, onFlag }) => <motion.div
           </div>
         </div>
 
-        {
-  /* Actions */
-}
         <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto sm:flex-shrink-0">
           {review.status === "pending" && <>
               <button
@@ -85,13 +83,68 @@ const ReviewCard = ({ review, onApprove, onReject, onFlag }) => <motion.div
       </div>
     </div>
   </motion.div>;
+
 function ReviewsPage() {
   const [activeTab, setActiveTab] = useState("pending");
-  const [reviewList, setReviewList] = useState(reviews);
+  const [reviewList, setReviewList] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchReviews = async () => {
+    try {
+      setLoading(true);
+      const res = await reviewApi.getAdminReviews();
+      const mapped = (res.data || []).map((r) => ({
+        id: r.id,
+        customerName: r.user ? `${r.user.firstName || ""} ${r.user.lastName || ""}`.trim() || "User" : "Anonymous",
+        productName: r.product?.name || `Product #${r.productId}`,
+        rating: Number(r.rating || 5),
+        title: r.title || "Customer Review",
+        body: r.comment || r.body || "",
+        status: (r.status || "pending").toLowerCase() === "approved" ? "published" : (r.status || "pending").toLowerCase(),
+        verified: true,
+        helpful: 0,
+        createdAt: r.createdAt
+      }));
+      setReviewList(mapped);
+    } catch (err) {
+      console.error("Failed to load reviews", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchReviews();
+  }, []);
+
   const filtered = reviewList.filter((r) => r.status === activeTab);
-  const approve = (id) => setReviewList((prev) => prev.map((r) => r.id === id ? { ...r, status: "published" } : r));
-  const reject = (id) => setReviewList((prev) => prev.filter((r) => r.id !== id));
-  const flag = (id) => setReviewList((prev) => prev.map((r) => r.id === id ? { ...r, status: "reported" } : r));
+
+  const approve = async (id) => {
+    try {
+      await reviewApi.updateStatus(id, "APPROVED");
+      setReviewList((prev) => prev.map((r) => r.id === id ? { ...r, status: "published" } : r));
+    } catch (err) {
+      console.error("Failed to approve review", err);
+    }
+  };
+
+  const reject = async (id) => {
+    try {
+      await reviewApi.updateStatus(id, "REJECTED");
+      setReviewList((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      console.error("Failed to reject review", err);
+    }
+  };
+
+  const flag = async (id) => {
+    try {
+      await reviewApi.updateStatus(id, "REPORTED");
+      setReviewList((prev) => prev.map((r) => r.id === id ? { ...r, status: "reported" } : r));
+    } catch (err) {
+      console.error("Failed to flag review", err);
+    }
+  };
   const tabs = [
     { value: "pending", label: "Pending" },
     { value: "published", label: "Published" },

@@ -1,43 +1,128 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiUpload, FiX, FiPlus, FiArrowLeft, FiImage } from "react-icons/fi";
-import { products } from "../../data/products";
-const categories = ["Tops", "Bottoms", "Outerwear", "Knitwear", "Footwear", "Accessories"];
-const collections = ["Essentials", "Heritage", "Archive", "Limited"];
+import { productApi, categoryApi, collectionApi } from "../../services/api";
+
 const allSizes = ["XS", "S", "M", "L", "XL", "XXL", "28", "30", "32", "34", "36", "38", "40", "42", "44"];
-const defaultColors = [
-  { name: "Black", hex: "#1a1a1a" },
-  { name: "White", hex: "#f5f3ef" },
-  { name: "Stone", hex: "#8c8277" },
-  { name: "Forest", hex: "#2d4a3e" },
-  { name: "Navy", hex: "#1e3a5f" }
-];
+
 function AddEditProductPage() {
   const navigate = useNavigate();
   const { id } = useParams();
   const isEdit = Boolean(id && id !== "new");
-  const existing = isEdit ? products.find((p) => p.id === id) : null;
+
+  const [categories, setCategories] = useState([]);
+  const [collections, setCollections] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
   const [form, setForm] = useState({
-    name: existing?.name ?? "",
-    description: existing?.description ?? "",
-    category: existing?.category ?? categories[0],
-    collection: existing?.collection ?? collections[0],
-    price: existing?.price?.toString() ?? "",
-    comparePrice: existing?.originalPrice?.toString() ?? "",
-    sku: existing?.sku ?? "",
-    material: existing?.material ?? "",
+    name: "",
+    description: "",
+    categoryId: "",
+    collectionId: "",
+    price: "",
+    comparePrice: "",
+    sku: "",
+    material: "",
     status: "active"
   });
-  const [selectedSizes, setSelectedSizes] = useState(existing?.sizes ?? []);
-  const [colors, setColors] = useState(existing?.colors ?? [{ name: "", hex: "#000000" }]);
+
+  const [selectedSizes, setSelectedSizes] = useState([]);
+  const [colors, setColors] = useState([{ name: "Black", hex: "#1a1a1a" }]);
   const [dragOver, setDragOver] = useState(false);
-  const [images, setImages] = useState(existing?.images ?? []);
+  const [images, setImages] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    const loadDropdownsAndProduct = async () => {
+      try {
+        setLoading(true);
+        const [catRes, colRes] = await Promise.all([
+          categoryApi.getAll().catch(() => ({ data: [] })),
+          collectionApi.getAll().catch(() => ({ data: [] }))
+        ]);
+        if (!active) return;
+        const fetchedCats = catRes.data || [];
+        const fetchedCols = colRes.data || [];
+        setCategories(fetchedCats);
+        setCollections(fetchedCols);
+
+        if (isEdit) {
+          const pRes = await productApi.getProducts();
+          const found = (pRes.data?.products || pRes.data || []).find(p => String(p.id) === String(id) || p.slug === id);
+          if (found) {
+            setForm({
+              name: found.name || "",
+              description: found.description || "",
+              categoryId: found.categoryId || (fetchedCats[0]?.id ?? ""),
+              collectionId: found.collectionId || (fetchedCols[0]?.id ?? ""),
+              price: String(found.basePrice || found.price || ""),
+              comparePrice: found.originalPrice ? String(found.originalPrice) : "",
+              sku: found.sku || "",
+              material: found.material || "",
+              status: "active"
+            });
+            setImages(Array.isArray(found.images) ? found.images : (found.images ? [found.images] : []));
+          }
+        } else {
+          setForm(f => ({
+            ...f,
+            categoryId: fetchedCats[0]?.id ?? "",
+            collectionId: fetchedCols[0]?.id ?? ""
+          }));
+        }
+      } catch (err) {
+        console.error("Failed to load product form data", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    loadDropdownsAndProduct();
+    return () => { active = false; };
+  }, [id, isEdit]);
+
+  const handleSaveProduct = async () => {
+    if (!form.name || !form.price) return;
+    try {
+      setSaving(true);
+      const payload = {
+        name: form.name,
+        description: form.description,
+        basePrice: parseFloat(form.price),
+        categoryId: form.categoryId ? Number(form.categoryId) : undefined,
+        collectionId: form.collectionId ? Number(form.collectionId) : undefined,
+        material: form.material,
+        images,
+        variants: colors.map((c) => ({
+          size: selectedSizes[0] || "M",
+          colorName: c.name || "Default",
+          colorHex: c.hex || "#000000",
+          stockQuantity: 50,
+          sku: form.sku ? `${form.sku}-${c.name}` : `SKU-${Date.now()}-${c.name}`
+        }))
+      };
+
+      if (isEdit) {
+        await productApi.updateProduct(id, payload);
+      } else {
+        await productApi.createProduct(payload);
+      }
+      navigate("/admin/products");
+    } catch (err) {
+      console.error("Failed to save product", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+  const set = (field, value) => setForm((f) => ({ ...f, [field]: value }));
   const toggleSize = (size) => setSelectedSizes((prev) => prev.includes(size) ? prev.filter((s) => s !== size) : [...prev, size]);
   const updateColor = (i, field, value) => setColors((prev) => prev.map((c, idx) => idx === i ? { ...c, [field]: value } : c));
   const addColor = () => setColors((prev) => [...prev, { name: "", hex: "#000000" }]);
   const removeColor = (i) => setColors((prev) => prev.filter((_, idx) => idx !== i));
-  const set = (field, value) => setForm((f) => ({ ...f, [field]: value }));
+
+  if (loading) return <div className="py-24 text-center text-gray-500">Loading product form...</div>;
+
   return <div className="space-y-5">
       {
     /* Header */
@@ -48,7 +133,7 @@ function AddEditProductPage() {
         </button>
         <div>
           <h1 className="font-display text-2xl text-gray-900">{isEdit ? "Edit Product" : "Add Product"}</h1>
-          <p className="text-sm text-gray-500">{isEdit ? `Editing ${existing?.name}` : "Create a new product listing"}</p>
+          <p className="text-sm text-gray-500">{isEdit ? "Editing product details" : "Create a new product listing"}</p>
         </div>
         <div className="ml-auto flex gap-2">
           <button
@@ -58,10 +143,11 @@ function AddEditProductPage() {
             Save as Draft
           </button>
           <button
-    onClick={() => navigate("/admin/products")}
+    disabled={saving}
+    onClick={handleSaveProduct}
     className="px-4 py-2 text-sm font-medium bg-[#0a0a0a] text-white rounded-xl hover:bg-[#2d4a3e] transition-colors"
   >
-            Save Product
+            {saving ? "Saving..." : "Save Product"}
           </button>
         </div>
       </div>
@@ -104,21 +190,23 @@ function AddEditProductPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
                 <select
-    value={form.category}
-    onChange={(e) => set("category", e.target.value)}
+    value={form.categoryId}
+    onChange={(e) => set("categoryId", e.target.value)}
     className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#2d4a3e] bg-white"
   >
-                  {categories.map((c) => <option key={c}>{c}</option>)}
+                  <option value="">Select Category</option>
+                  {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Collection</label>
                 <select
-    value={form.collection}
-    onChange={(e) => set("collection", e.target.value)}
+    value={form.collectionId}
+    onChange={(e) => set("collectionId", e.target.value)}
     className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#2d4a3e] bg-white"
   >
-                  {collections.map((c) => <option key={c}>{c}</option>)}
+                  <option value="">Select Collection</option>
+                  {collections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
             </div>

@@ -1,23 +1,56 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { FiSearch, FiDownload, FiEye, FiUsers, FiStar, FiTrendingUp, FiUserPlus } from "react-icons/fi";
-import { customers } from "../../data/customers";
+import { userApi } from "../../services/api";
+
 const tierColors = {
   Platinum: "bg-purple-100 text-purple-700",
   Gold: "bg-amber-100 text-amber-700",
   Silver: "bg-gray-100 text-gray-600",
   Bronze: "bg-orange-100 text-orange-700"
 };
+
 const tiers = ["All", "Platinum", "Gold", "Silver", "Bronze"];
-const stats = [
-  { label: "Total Customers", value: customers.length, icon: <FiUsers size={18} /> },
-  { label: "New This Month", value: 48, icon: <FiUserPlus size={18} /> },
-  { label: "VIP Customers", value: customers.filter((c) => c.tags.includes("VIP")).length, icon: <FiStar size={18} /> },
-  { label: "Avg Lifetime Value", value: "\xA3" + Math.round(customers.reduce((a, c) => a + c.totalSpent, 0) / customers.length).toLocaleString(), icon: <FiTrendingUp size={18} /> }
-];
+
 function CustomersListPage() {
   const [search, setSearch] = useState("");
   const [tier, setTier] = useState("All");
+  const [customers, setCustomers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    const fetchCustomers = async () => {
+      try {
+        const res = await userApi.getCustomers();
+        if (!active) return;
+        const fetched = (res.data || []).map((c) => ({
+          id: c.id,
+          name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || "Customer",
+          email: c.email || "",
+          tier: c.role === "ADMIN" ? "Platinum" : "Silver",
+          totalOrders: Number(c.orderCount || 0),
+          totalSpent: Number(c.totalSpent || 0),
+          tags: [c.role || "CUSTOMER"],
+          joinedAt: c.createdAt
+        }));
+        setCustomers(fetched);
+      } catch (err) {
+        console.error("Failed to fetch customers", err);
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    fetchCustomers();
+    return () => { active = false; };
+  }, []);
+
+  const stats = [
+    { label: "Total Customers", value: customers.length, icon: <FiUsers size={18} /> },
+    { label: "New This Month", value: customers.filter(c => new Date(c.joinedAt) > new Date(Date.now() - 30 * 86400000)).length, icon: <FiUserPlus size={18} /> },
+    { label: "VIP Customers", value: customers.filter((c) => c.tier === "Platinum").length, icon: <FiStar size={18} /> },
+    { label: "Avg Lifetime Value", value: "£" + (customers.length ? Math.round(customers.reduce((a, c) => a + c.totalSpent, 0) / customers.length).toLocaleString() : 0), icon: <FiTrendingUp size={18} /> }
+  ];
   const filtered = customers.filter((c) => {
     const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.email.toLowerCase().includes(search.toLowerCase());
     const matchTier = tier === "All" || c.tier === tier;
