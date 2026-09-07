@@ -89,8 +89,9 @@ Run both after pulling schema changes. `npm run sync` creates any new tables
 (`referrals`, `payment_methods`, `campaigns`, `banners`, `newsletter_subscribers`,
 `loyalty_transactions`, `notifications`, `discount_rules`, `order_notes`) and
 nullable columns; `npm run migrate`
-handles columns `sync` can't add to a populated table
-(`orders.subtotal_amount` / `tax_amount` / `updated_at`).
+handles columns `sync` can't add or alter cleanly on a populated table
+(`orders.subtotal_amount` / `tax_amount` / `updated_at` / `guest_email`, and
+relaxing `addresses.user_id` to nullable for guest checkout).
 
 ### Seed demo data
 
@@ -191,12 +192,12 @@ Associations live in `src/models/relation.js`. See `database_schema.md` for the 
 | Model | Table | Notes |
 |-------|-------|-------|
 | `User` | `users` | roles `CUSTOMER` / `STAFF` / `ADMIN`; `beforeSave` hook hashes `passwordHash`; instance methods `isPasswordCorrect`, `generateAccessToken`, `generateRefreshToken`; stores `refreshToken` + `resetPasswordToken` / `resetPasswordExpires` (never returned in responses) |
-| `Address` | `addresses` | belongs to user; default shipping/billing flags |
+| `Address` | `addresses` | belongs to a user (`userId` nullable — guest-checkout addresses have no owner); default shipping/billing flags |
 | `Category` | `categories` | unique `slug` |
 | `Collection` | `collections` | unique `slug` |
 | `Product` | `products` | `paranoid` (soft delete); `details` & `images` are JSON; status `DRAFT` / `PUBLISHED` / `ARCHIVED` |
 | `ProductVariant` | `product_variants` | size + color + unique `sku` + `stockQuantity` + optional `priceOverride` |
-| `Order` | `orders` | status `PENDING`→`PROCESSING`→`SHIPPED`→`DELIVERED` / `CANCELLED`; unique `orderNumber`; stores `subtotalAmount`, `taxAmount`, `discountAmount`, `shippingFee`, `totalAmount`; has `createdAt` + `updatedAt` |
+| `Order` | `orders` | status `PENDING`→`PROCESSING`→`SHIPPED`→`DELIVERED` / `CANCELLED`; unique `orderNumber`; `userId` nullable + `guestEmail` for guest checkout; stores `subtotalAmount`, `taxAmount`, `discountAmount`, `shippingFee`, `totalAmount`; has `createdAt` + `updatedAt` |
 | `OrderItem` | `order_items` | links order ↔ variant, snapshots `unitPrice` |
 | `Payment` | `payments` | `provider` (`MOCK`/`CARD`/`COD`/`ESEWA`/`KHALTI`), status `PENDING` / `COMPLETED` / `FAILED` / `REFUNDED`, nullable `transactionId` |
 | `PaymentMethod` | `payment_methods` | saved instrument — tokenised (brand + last4 only), `isDefault` |
@@ -237,6 +238,9 @@ Errors are normalised by the global handler in `app.js`:
 
 - `verifyJWT` reads the token from the `accessToken` cookie **or** an
   `Authorization: Bearer <token>` header, loads the user onto `req.user`.
+- `optionalAuth` does the same but never rejects — a missing or invalid token
+  just means `req.user` is undefined. Used by `POST /orders/checkout` and
+  `POST /orders/payments/verify` so guests can order without an account.
 - `verifyAdmin` must run after `verifyJWT`; allows `ADMIN` and `STAFF`.
 - Login sets `accessToken` / `refreshToken` as `httpOnly` cookies **and** returns them
   in the body (the SPA also stores them in `localStorage` for the Bearer fallback).
@@ -301,7 +305,7 @@ Same shape as categories; `GET /` rows include `productCount`.
 | Method | Path | Notes |
 |--------|------|-------|
 | GET | `/` | query: `category`, `collection`, `search`, `minPrice`, `maxPrice`, `sort` (`price_asc`\|`price_desc`\|`newest`), `page`, `limit` → `{ products, pagination }`. Each product carries `avgRating` + `reviewCount` (APPROVED reviews only) |
-| GET | `/:slug` | slug or numeric id; PUBLISHED only; includes category, collection, variants, `avgRating`, `reviewCount` |
+| GET | `/:slug` | accepts a slug **or** the product's UUID id; PUBLISHED only; includes category, collection, variants, `avgRating`, `reviewCount` |
 | GET | `/admin/:id` | 👑 single product by id, **any status** (incl. soft-deleted); includes category, collection, variants — used by the edit form |
 | POST | `/admin/upload` | 👑 `multipart/form-data` field `images` (up to 8, ≤5 MB each, images only) → `{ urls: [] }`; files are stored under `public/uploads` and served at `/uploads/...` |
 | POST | `/admin` | 👑 creates product + variants in a transaction |
@@ -321,8 +325,8 @@ Every order response includes `items` → `productVariant` → `product`,
 
 | Method | Path | Notes |
 |--------|------|-------|
-| POST | `/checkout` | 🔒 `{ items:[{ productVariantId, quantity }], shippingAddressId, billingAddressId, couponCode?, provider?, savedPaymentMethodId?, paymentToken? }` — zod-validated; row-locked variants, coupon, shipping + tax from `settings`, loyalty accrual, referral completion. `provider` ∈ `MOCK`/`CARD`/`COD`/`ESEWA`/`KHALTI`. Returns `{ order, provider, redirect?, requiresPayment }` — for `ESEWA`/`KHALTI` the client uses `redirect` then calls `/payments/verify` |
-| POST | `/payments/verify` | 🔒 `{ orderId, provider, ref }` — confirm a redirect payment; settles the order (idempotent) |
+| POST | `/checkout` | **auth optional** — zod-validated; row-locked variants, coupon, shipping + tax from `settings`. `provider` ∈ `MOCK`/`CARD`/`COD`/`ESEWA`/`KHALTI`. Returns `{ order, provider, redirect?, requiresPayment }` — for `ESEWA`/`KHALTI` the client uses `redirect` then calls `/payments/verify`.<br>• **Account** (Bearer token): `{ items:[{ productVariantId, quantity }], shippingAddressId, billingAddressId, couponCode?, provider?, savedPaymentMethodId?, paymentToken? }` — plus loyalty accrual + referral completion.<br>• **Guest** (no token): `{ items, shippingAddress:{ addressLine1, addressLine2?, city, state?, postalCode, country }, billingAddress:{…}, guestEmail, couponCode?, provider?, paymentToken? }` — `Order.userId` is null, `guestEmail` is stored, the addresses are created with no owner; no loyalty/referral/notifications. `savedPaymentMethodId` is ignored. |
+| POST | `/payments/verify` | **auth optional** — `{ orderId, provider, ref, guestEmail? }` — confirm a redirect payment; settles the order (idempotent). Authorised by the owning account, or by a guest supplying the order's `guestEmail`. |
 | GET | `/my-orders` | 🔒 |
 | GET | `/my-orders/:id` | 🔒 |
 | GET | `/admin` | 👑 all orders (+ `user`) |
@@ -461,10 +465,19 @@ with `referral_reward_points` loyalty points.
 - **Rate limits:** `/api` → 600 req / 15 min (`RATE_LIMIT_MAX`); `/api/v1/auth` →
   20 req / 15 min, successful requests not counted (`AUTH_RATE_LIMIT_MAX`).
   `429` responses use the standard JSON error envelope.
-- **Validation:** `zod` guards every auth route, `POST /orders/checkout`,
-  `PUT /orders/admin/:id/status`, product create/update, category & collection
-  create, category reorder, coupon create, address create and review create;
-  failures return `400` with an `errors: [{ field, message }]` array.
+- **Validation:** `zod` `validateBody` guards **every write route** — auth,
+  checkout (account + guest shapes), payment verify, order status, product/variant
+  create & update, category & collection create & update & reorder, coupon
+  create & update, automatic discount rules, inventory update, review create &
+  moderation, blog create & update, settings upsert, profile update,
+  change-password, staff create & update, address create & update, wishlist add,
+  saved payment methods, and marketing (campaigns, banners, newsletter). Failures
+  return `400` with an `errors: [{ field, message }]` array. Schemas live in
+  `src/validators/`.
+- **Guest checkout:** anonymous callers can place and pay for an order. Their
+  order has no `userId` (kept only as `guestEmail`) and gets none of the
+  account-only perks — no loyalty points, no referral credit, no notification
+  feed, no saved payment methods.
 - **Payment tokenisation:** card numbers are never persisted — only the brand + last
   4 digits and an opaque token, mirroring how a real gateway returns a card token.
 - **Email:** password-reset links + marketing campaigns are sent via SMTP; with
@@ -482,14 +495,12 @@ See **`FIXES.md`** and **`plan.md`** for the full tracked list. In brief, still 
 
 - Configure a real SMTP server and real eSewa/Khalti keys for production.
 - Loyalty point *redemption* at checkout is not built (accrual + ledger only).
-- Cart is client-side only (no `/api/cart`); no guest checkout.
-- `npm test` runs a read-only vitest/supertest smoke suite (17 tests) against the
-  dev database; a dedicated test DB and write-path coverage are still to do.
+- Cart is client-side only (no `/api/cart`).
+- `npm test` — 25 read-only checks always run; the `tests/write.test.js` lifecycle
+  block runs only when `TEST_DB_URI` is set (see `.env.test.example`). Expanding
+  write-path coverage is the remaining test task.
 - JWT secrets in `.env` have been rotated; the Aiven MySQL credentials still need
-  a manual rotation via the Aiven console.
-- `zod` now covers auth / checkout / order-status / catalog / coupon / address /
-  review writes; a few remaining admin write routes (inventory, blog, marketing,
-  discount rules) are still unguarded.
+  a manual rotation via the Aiven console (`.env` itself was never committed).
 
 ---
 
@@ -502,6 +513,6 @@ See **`FIXES.md`** and **`plan.md`** for the full tracked list. In brief, still 
 | `npm run sync` | Sync models → database schema (`sequelize.sync({ alter: true })`) |
 | `npm run migrate` | Idempotent raw-SQL column adds sync can't do |
 | `npm run seed` | Seed demo data |
-| `npm test` | Run the read-only vitest/supertest smoke suite (`tests/`) |
+| `npm test` | Vitest/supertest suite — read-only against `DB_URI`; the write block runs only with `TEST_DB_URI` set (`.env.test.example`) |
 | `npm run test:watch` | Same, in watch mode |
 | `node src/makeAdmin.js <email> [ADMIN\|STAFF]` | Promote a user |

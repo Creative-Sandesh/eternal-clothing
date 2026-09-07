@@ -85,6 +85,16 @@ const settleOrderPayment = async (order, t) => {
   return { pointsEarned };
 };
 
+// Whitelist the columns we accept for an inline (guest) address.
+const pickAddress = (a = {}) => ({
+  addressLine1: a.addressLine1,
+  addressLine2: a.addressLine2 || null,
+  city: a.city,
+  state: a.state || null,
+  postalCode: a.postalCode,
+  country: a.country,
+});
+
 const checkoutOrder = asyncHandler(async (req, res) => {
   const {
     items, // Array of { productVariantId, quantity }
@@ -95,25 +105,31 @@ const checkoutOrder = asyncHandler(async (req, res) => {
     savedPaymentMethodId   // id of a stored PaymentMethod
   } = req.body;
 
+  // Guest checkout: no authenticated user. The order is tied to a contact
+  // email and the addresses are supplied inline rather than by saved id.
+  const isGuest = !req.user;
+  const guestEmail = isGuest ? String(req.body.guestEmail || "").trim().toLowerCase() : null;
+
   let provider = String(req.body.provider || req.body.paymentMethod || "MOCK").toUpperCase();
 
   if (!items || items.length === 0) {
     throw new ApiError(400, "Cart is empty");
   }
-  if (!shippingAddressId || !billingAddressId) {
+
+  if (isGuest) {
+    if (!guestEmail) {
+      throw new ApiError(400, "guestEmail is required for guest checkout");
+    }
+    if (!req.body.shippingAddress || !req.body.billingAddress) {
+      throw new ApiError(400, "Guest checkout requires inline shipping and billing addresses");
+    }
+  } else if (!shippingAddressId || !billingAddressId) {
     throw new ApiError(400, "Shipping and billing addresses are required");
   }
 
-  // Verify addresses belong to user
-  const shippingAddress = await Address.findOne({ where: { id: shippingAddressId, userId: req.user.id } });
-  const billingAddress = await Address.findOne({ where: { id: billingAddressId, userId: req.user.id } });
-  if (!shippingAddress || !billingAddress) {
-    throw new ApiError(400, "Invalid or unauthorized shipping/billing address");
-  }
-
-  // Resolve a saved payment method → provider
+  // Resolve a saved payment method → provider (account checkouts only).
   let savedMethod = null;
-  if (savedPaymentMethodId) {
+  if (savedPaymentMethodId && !isGuest) {
     savedMethod = await PaymentMethod.findOne({ where: { id: savedPaymentMethodId, userId: req.user.id } });
     if (!savedMethod) throw new ApiError(400, "Saved payment method not found");
     provider = savedMethod.type === "CARD" ? "CARD" : savedMethod.type;
@@ -127,6 +143,24 @@ const checkoutOrder = asyncHandler(async (req, res) => {
 
   // Run checkout inside a database transaction to prevent race conditions on stock updates
   const createdOrderDetails = await sequelize.transaction(async (t) => {
+    // Resolve the shipping/billing addresses. Guests get fresh rows with no
+    // userId; account holders reference their own saved addresses.
+    let resolvedShippingId, resolvedBillingId;
+    if (isGuest) {
+      const sa = await Address.create({ ...pickAddress(req.body.shippingAddress), userId: null }, { transaction: t });
+      const ba = await Address.create({ ...pickAddress(req.body.billingAddress), userId: null }, { transaction: t });
+      resolvedShippingId = sa.id;
+      resolvedBillingId = ba.id;
+    } else {
+      const sa = await Address.findOne({ where: { id: shippingAddressId, userId: req.user.id }, transaction: t });
+      const ba = await Address.findOne({ where: { id: billingAddressId, userId: req.user.id }, transaction: t });
+      if (!sa || !ba) {
+        throw new ApiError(400, "Invalid or unauthorized shipping/billing address");
+      }
+      resolvedShippingId = sa.id;
+      resolvedBillingId = ba.id;
+    }
+
     let subtotal = 0;
     const itemsToCreate = [];
     const variantsToUpdate = [];
@@ -237,7 +271,8 @@ const checkoutOrder = asyncHandler(async (req, res) => {
     // Create main Order record
     const order = await Order.create(
       {
-        userId: req.user.id,
+        userId: req.user?.id ?? null,
+        guestEmail,
         orderNumber,
         status: "PENDING",
         subtotalAmount: subtotal,
@@ -246,8 +281,8 @@ const checkoutOrder = asyncHandler(async (req, res) => {
         discountAmount,
         shippingFee,
         couponId,
-        shippingAddressId,
-        billingAddressId
+        shippingAddressId: resolvedShippingId,
+        billingAddressId: resolvedBillingId
       },
       { transaction: t }
     );
@@ -297,7 +332,8 @@ const checkoutOrder = asyncHandler(async (req, res) => {
     }
   }
 
-  await notify(req.user.id, {
+  // notify() is a no-op when userId is null (guest orders).
+  await notify(req.user?.id, {
     type: "ORDER_PLACED",
     title: "Order placed",
     message: isRedirect(provider)
@@ -308,7 +344,7 @@ const checkoutOrder = asyncHandler(async (req, res) => {
     link: `/account/orders/${placedOrder.id}`
   });
   if (pointsEarned > 0) {
-    await notify(req.user.id, {
+    await notify(req.user?.id, {
       type: "LOYALTY_EARNED",
       title: `+${pointsEarned} loyalty points`,
       message: `You earned ${pointsEarned} points on this order.`,
@@ -333,11 +369,17 @@ const verifyPayment = asyncHandler(async (req, res) => {
     throw new ApiError(400, "orderId and a redirect provider (ESEWA|KHALTI) are required");
   }
 
-  const order = await Order.findOne({
-    where: { id: orderId, userId: req.user.id },
+  const order = await Order.findByPk(orderId, {
     include: [{ model: Payment, as: "payments" }]
   });
   if (!order) throw new ApiError(404, "Order not found");
+
+  // Authorize: the owning account, or a guest who proves the contact email.
+  const guestEmail = String(req.body.guestEmail || "").trim().toLowerCase();
+  const ownsIt = order.userId
+    ? req.user?.id === order.userId
+    : !!order.guestEmail && guestEmail === order.guestEmail;
+  if (!ownsIt) throw new ApiError(404, "Order not found");
 
   const payment = (order.payments || []).find((p) => p.provider === provider && p.status === "PENDING");
   if (!payment) {
@@ -359,14 +401,14 @@ const verifyPayment = asyncHandler(async (req, res) => {
     return { pointsEarned };
   });
 
-  await notify(req.user.id, {
+  await notify(req.user?.id, {
     type: "ORDER_PLACED",
     title: "Payment received",
     message: `Payment for order ${order.orderNumber} confirmed.`,
     link: `/account/orders/${order.id}`
   });
   if (settled.pointsEarned > 0) {
-    await notify(req.user.id, {
+    await notify(req.user?.id, {
       type: "LOYALTY_EARNED",
       title: `+${settled.pointsEarned} loyalty points`,
       message: `You earned ${settled.pointsEarned} points on this order.`,

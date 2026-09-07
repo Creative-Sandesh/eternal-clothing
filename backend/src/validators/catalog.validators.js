@@ -50,8 +50,67 @@ export const groupSchema = z.object({
   image_url: z.string().trim().max(500).optional().or(z.literal("")),
 });
 
+// Category / collection update — every field optional.
+export const groupUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(150).optional(),
+  description: z.string().trim().optional().or(z.literal("")),
+  image_url: z.string().trim().max(500).optional().or(z.literal("")),
+});
+
 export const reorderSchema = z.object({
   ids: z.array(uuid).min(1, "ids is required"),
+});
+
+// Automatic discount rule (Coupons admin page).
+const RULE_TRIGGERS = ["MIN_SUBTOTAL", "MIN_ITEMS"];
+const RULE_REWARDS = ["FREE_SHIPPING", "PERCENT_OFF", "FIXED_OFF"];
+
+export const ruleSchema = z.object({
+  name: z.string().trim().min(1, "Rule name is required").max(150),
+  trigger: z.enum(RULE_TRIGGERS),
+  threshold: z.coerce.number().nonnegative(),
+  reward: z.enum(RULE_REWARDS),
+  rewardValue: z.coerce.number().nonnegative().optional(),
+  isActive: z.boolean().optional(),
+  priority: z.coerce.number().int().optional(),
+});
+
+export const ruleUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(150).optional(),
+  trigger: z.enum(RULE_TRIGGERS).optional(),
+  threshold: z.coerce.number().nonnegative().optional(),
+  reward: z.enum(RULE_REWARDS).optional(),
+  rewardValue: z.coerce.number().nonnegative().optional(),
+  isActive: z.boolean().optional(),
+  priority: z.coerce.number().int().optional(),
+});
+
+// Coupon update — same fields as couponSchema but all optional.
+export const couponUpdateSchema = z.object({
+  code: z.string().trim().min(1).max(50).optional(),
+  discountType: z.string().trim().optional(),
+  discountValue: money.optional(),
+  minPurchaseAmount: money.optional().nullable(),
+  validFrom: z.string().optional(),
+  validUntil: z.string().optional(),
+  usageLimit: z.coerce.number().int().positive().optional().nullable(),
+  maxUses: z.coerce.number().int().positive().optional().nullable(),
+  isActive: z.boolean().optional(),
+}).passthrough();
+
+export const inventoryUpdateSchema = z.object({
+  stockQuantity: z.coerce.number().int().nonnegative().optional(),
+  priceOverride: money.optional().nullable(),
+}).refine((v) => v.stockQuantity !== undefined || v.priceOverride !== undefined, {
+  message: "Provide stockQuantity and/or priceOverride",
+});
+
+export const reviewStatusSchema = z.object({
+  status: z.enum(["PENDING", "APPROVED", "REJECTED"]),
+});
+
+export const wishlistAddSchema = z.object({
+  productId: uuid,
 });
 
 export const couponSchema = z.object({
@@ -85,3 +144,18 @@ export const reviewCreateSchema = z.object({
   rating: z.coerce.number().int().min(1, "Rating must be 1–5").max(5, "Rating must be 1–5"),
   comment: z.string().trim().max(2000).optional().or(z.literal("")),
 });
+
+// Address update (PUT /addresses/:id) — partial, but keep the same shape rules.
+export const addressUpdateSchema = z.object({
+  firstName: z.string().trim().max(100).optional().or(z.literal("")),
+  lastName: z.string().trim().max(100).optional().or(z.literal("")),
+  addressLine1: z.string().trim().min(1).max(255).optional(),
+  addressLine2: z.string().trim().max(255).optional().or(z.literal("")),
+  city: z.string().trim().min(1).max(100).optional(),
+  state: z.string().trim().max(100).optional().or(z.literal("")),
+  postalCode: z.string().trim().min(1).max(20).optional(),
+  country: z.string().trim().min(1).max(100).optional(),
+  isDefault: z.boolean().optional(),
+  isDefaultShipping: z.boolean().optional(),
+  isDefaultBilling: z.boolean().optional(),
+}).passthrough();

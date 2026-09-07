@@ -10,9 +10,11 @@ const Address = sequelize.define(
             primaryKey: true,
         },
 
+        // Null for addresses captured during a guest checkout — those rows
+        // belong to an order, not a user account.
         userId: {
             type: DataTypes.UUID,
-            allowNull: false,
+            allowNull: true,
             field: "user_id",
         },
 

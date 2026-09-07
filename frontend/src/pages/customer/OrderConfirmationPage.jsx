@@ -1,26 +1,47 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { useMoney } from "../../context/SettingsContext";
+import { useAuth } from "../../context/AuthContext";
 import { motion } from "framer-motion";
 import { FiCheck, FiPackage, FiArrowRight, FiLoader, FiAlertCircle } from "react-icons/fi";
 import { orderApi } from "../../services/api";
 
+// Recover the details a real gateway redirect drops when it bounces back here
+// without React Router state (checkout stashed them before redirecting).
+function readPendingVerify() {
+  try {
+    const raw = sessionStorage.getItem("eternal_pending_verify");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
 function OrderConfirmationPage() {
   const money = useMoney();
+  const { user } = useAuth();
   const location = useLocation();
   const [params] = useSearchParams();
 
-  // Order id / provider come from checkout navigation state, or the gateway redirect query.
-  const orderId = location.state?.orderId || params.get("orderId");
-  const provider = location.state?.provider || params.get("provider");
-  const needsVerify = location.state?.verify || (provider && !location.state);
+  // Read the redirect stash once — the effect clears it, and we don't want that
+  // clearing to change the derived values below on a later render.
+  const [pending] = useState(() => (location.state ? null : readPendingVerify()));
 
-  const [order, setOrder] = useState(null);
-  const [phase, setPhase] = useState(needsVerify ? "verifying" : "loading"); // verifying | loading | done | error
+  // Order id / provider / guest email come from checkout navigation state, the
+  // gateway redirect query, or the sessionStorage stash left before a redirect.
+  const orderId = location.state?.orderId || params.get("orderId") || pending?.orderId;
+  const provider = location.state?.provider || params.get("provider") || pending?.provider;
+  const guestEmail = location.state?.guestEmail || pending?.guestEmail;
+  const stateOrder = location.state?.order || null;
+  const needsVerify = location.state?.verify || (provider && !location.state) || !!pending;
+
+  const [order, setOrder] = useState(stateOrder);
+  const [phase, setPhase] = useState(needsVerify ? "verifying" : stateOrder ? "done" : "loading");
   const [message, setMessage] = useState("");
 
   useEffect(() => {
     if (!orderId) { setPhase("done"); return; }
+    if (!needsVerify && stateOrder) { setPhase("done"); return; }
     let active = true;
 
     const finish = (data) => { if (active) { setOrder(data); setPhase("done"); } };
@@ -29,12 +50,24 @@ function OrderConfirmationPage() {
       try {
         if (needsVerify && provider) {
           const ref = params.get("data") || params.get("pidx") || params.get("refId") || "sandbox";
-          const res = await orderApi.verifyPayment({ orderId, provider: provider.toUpperCase(), ref });
+          const res = await orderApi.verifyPayment({
+            orderId,
+            provider: provider.toUpperCase(),
+            ref,
+            ...(guestEmail ? { guestEmail } : {}),
+          });
+          try { sessionStorage.removeItem("eternal_pending_verify"); } catch { /* ignore */ }
           finish(res.data);
           return;
         }
-        const res = await orderApi.getMyOrderById(orderId);
-        finish(res.data);
+        // No verification needed. Logged-in customers can re-fetch; guests rely on
+        // the order object handed over from checkout.
+        if (user) {
+          const res = await orderApi.getMyOrderById(orderId);
+          finish(res.data);
+        } else {
+          finish(stateOrder);
+        }
       } catch (err) {
         if (!active) return;
         setPhase("error");
@@ -43,7 +76,7 @@ function OrderConfirmationPage() {
     };
     run();
     return () => { active = false; };
-  }, [orderId, provider, needsVerify]);
+  }, [orderId, provider, needsVerify]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const deliveryDate = new Date();
   deliveryDate.setDate(deliveryDate.getDate() + 5);
@@ -73,7 +106,9 @@ function OrderConfirmationPage() {
         <FiAlertCircle className="w-10 h-10 text-red-500" />
         <h1 className="font-display text-3xl text-[#0a0a0a]">Payment not confirmed</h1>
         <p className="text-sm text-[#8c8277] max-w-sm">{message}</p>
-        <Link to="/account/orders" className="mt-2 px-6 py-3 bg-[#0a0a0a] text-white text-xs tracking-widest uppercase">View my orders</Link>
+        <Link to={user ? "/account/orders" : "/shop"} className="mt-2 px-6 py-3 bg-[#0a0a0a] text-white text-xs tracking-widest uppercase">
+          {user ? "View my orders" : "Back to shop"}
+        </Link>
       </div>;
   }
 
@@ -94,6 +129,11 @@ function OrderConfirmationPage() {
               ? "Thanks for your order — payment on delivery."
               : "Thank you for your order. We're preparing it now."}
           </p>
+          {!user && (order?.guestEmail || guestEmail) && (
+            <p className="text-[#8c8277] text-sm mt-2">
+              A confirmation has been sent to {order?.guestEmail || guestEmail}.
+            </p>
+          )}
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.45 }} className="bg-white border border-[#0a0a0a]/8 p-8 mb-6">
@@ -130,9 +170,15 @@ function OrderConfirmationPage() {
         </motion.div>
 
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.6 }} className="flex flex-col sm:flex-row gap-3">
-          <Link to="/account/orders" className="flex-1 flex items-center justify-center gap-2 bg-[#2d4a3e] text-white text-xs tracking-[0.15em] uppercase py-4 hover:bg-[#243d32] transition-colors">
-            <FiPackage className="w-4 h-4" /> View My Orders
-          </Link>
+          {user ? (
+            <Link to="/account/orders" className="flex-1 flex items-center justify-center gap-2 bg-[#2d4a3e] text-white text-xs tracking-[0.15em] uppercase py-4 hover:bg-[#243d32] transition-colors">
+              <FiPackage className="w-4 h-4" /> View My Orders
+            </Link>
+          ) : (
+            <Link to="/register" className="flex-1 flex items-center justify-center gap-2 bg-[#2d4a3e] text-white text-xs tracking-[0.15em] uppercase py-4 hover:bg-[#243d32] transition-colors">
+              <FiPackage className="w-4 h-4" /> Create an account
+            </Link>
+          )}
           <Link to="/shop" className="flex-1 flex items-center justify-center gap-2 border border-[#0a0a0a] text-[#0a0a0a] text-xs tracking-[0.15em] uppercase py-4 hover:bg-[#f0ebe2] transition-colors">
             Continue Shopping <FiArrowRight className="w-4 h-4" />
           </Link>

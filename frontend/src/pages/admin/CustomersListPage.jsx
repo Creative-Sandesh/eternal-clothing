@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiSearch, FiDownload, FiEye, FiUsers, FiStar, FiTrendingUp, FiUserPlus } from "react-icons/fi";
 import { userApi } from "../../services/api";
+import { downloadCsv } from "../../utils/csv";
 
 const tierColors = {
   Platinum: "bg-purple-100 text-purple-700",
@@ -59,6 +60,22 @@ function CustomersListPage() {
     const matchTier = tier === "All" || c.tier === tier;
     return matchSearch && matchTier;
   });
+
+  function exportCsv() {
+    downloadCsv(
+      `customers-${new Date().toISOString().slice(0, 10)}.csv`,
+      [
+        { key: "name", label: "Name" },
+        { key: "email", label: "Email" },
+        { key: "tier", label: "Tier" },
+        { key: "totalOrders", label: "Orders" },
+        { label: "Total Spent", format: (c) => Number(c.totalSpent || 0).toFixed(2) },
+        { label: "Joined", format: (c) => (c.joinedAt ? new Date(c.joinedAt).toISOString().slice(0, 10) : "") },
+      ],
+      filtered
+    );
+  }
+
   return <div className="space-y-5">
       {
     /* Header */
@@ -68,7 +85,11 @@ function CustomersListPage() {
           <h1 className="font-display text-2xl text-gray-900">Customers</h1>
           <p className="text-sm text-gray-500 mt-0.5">{customers.length} customers total</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors">
+        <button
+    onClick={exportCsv}
+    disabled={filtered.length === 0}
+    className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-40"
+  >
           <FiDownload size={14} /> Export
         </button>
       </div>

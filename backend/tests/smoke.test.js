@@ -75,6 +75,40 @@ describe("RBAC", () => {
   });
 });
 
+describe("write-route validation", () => {
+  let adminToken;
+  beforeAll(async () => { adminToken = await loginAdmin(); });
+
+  it("rejects a blog post with no content (400 + field error)", async () => {
+    const res = await api().post("/api/v1/blogs/admin").set(auth(adminToken)).send({ title: "Hi" });
+    expect(res.status).toBe(400);
+    expect(res.body.errors.map((e) => e.field)).toContain("content");
+  });
+
+  it("rejects a staff user with a bad role", async () => {
+    const res = await api()
+      .post("/api/v1/users/admin/users")
+      .set(auth(adminToken))
+      .send({ firstName: "A", lastName: "B", email: "x@y.com", password: "longenough", role: "WIZARD" });
+    expect(res.status).toBe(400);
+    expect(res.body.errors.map((e) => e.field)).toContain("role");
+  });
+
+  it("rejects an inventory update with an empty body", async () => {
+    const res = await api()
+      .put("/api/v1/inventory/00000000-0000-0000-0000-000000000000")
+      .set(auth(adminToken))
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects a profile update with nothing to change", async () => {
+    const customerToken = await loginCustomer();
+    const res = await api().put("/api/v1/users/me").set(auth(customerToken)).send({});
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("catalog", () => {
   it("lists products with pagination + ratings", async () => {
     const res = await api().get("/api/v1/products?limit=2");
@@ -84,6 +118,20 @@ describe("catalog", () => {
       expect(p).toHaveProperty("avgRating");
       expect(p).toHaveProperty("reviewCount");
     }
+  });
+
+  it("fetches a single product by slug AND by UUID id", async () => {
+    const list = await api().get("/api/v1/products?limit=1");
+    const p = list.body.data.products[0];
+    expect(p).toBeTruthy();
+
+    const bySlug = await api().get(`/api/v1/products/${p.slug}`);
+    expect(bySlug.status).toBe(200);
+    expect(bySlug.body.data.id).toBe(p.id);
+
+    const byId = await api().get(`/api/v1/products/${p.id}`);
+    expect(byId.status).toBe(200);
+    expect(byId.body.data.id).toBe(p.id);
   });
 
   it("lists categories with productCount", async () => {
@@ -111,6 +159,28 @@ describe("checkout validation", () => {
     expect(res.status).toBe(400);
     expect(res.body.errors.length).toBeGreaterThan(0);
   });
+
+  it("allows an unauthenticated (guest) checkout request through the auth layer", async () => {
+    // No token: it must NOT 401. It fails validation instead (no addresses).
+    const res = await api()
+      .post("/api/v1/orders/checkout")
+      .send({ items: [{ productVariantId: "00000000-0000-0000-0000-000000000000", quantity: 1 }] });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/validation/i);
+  });
+
+  it("rejects a guest checkout that omits guestEmail", async () => {
+    const addr = { addressLine1: "1 Test St", city: "Kathmandu", postalCode: "44600", country: "Nepal" };
+    const res = await api()
+      .post("/api/v1/orders/checkout")
+      .send({
+        items: [{ productVariantId: "00000000-0000-0000-0000-000000000000", quantity: 1 }],
+        shippingAddress: addr,
+        billingAddress: addr,
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.errors.map((e) => e.field)).toContain("guestEmail");
+  });
 });
 
 describe("customer features", () => {
@@ -135,5 +205,19 @@ describe("customer features", () => {
     const res = await api().get("/api/v1/notifications").set(auth(customerToken));
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveProperty("unreadCount");
+  });
+
+  it("payment-method validation tolerates the form's blank expiry strings", async () => {
+    // The form always submits expiryMonth/expiryYear (empty for non-cards).
+    // A blank must not surface as an expiryMonth validation error — the request
+    // should fall through to the controller's card-number check instead.
+    const res = await api()
+      .post("/api/v1/payment-methods")
+      .set(auth(customerToken))
+      .send({ type: "CARD", cardNumber: "123", expiryMonth: "", expiryYear: "", walletId: "" });
+    expect(res.status).toBe(400);
+    const fields = (res.body.errors || []).map((e) => e.field);
+    expect(fields).not.toContain("expiryMonth");
+    expect(fields).not.toContain("expiryYear");
   });
 });

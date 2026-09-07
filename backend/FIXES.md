@@ -59,40 +59,76 @@ Status legend:
 | `utils/referral.js` / COD settlement | Notifications inside a write transaction deadlocked against the row locks (`User.increment` lock ↔ `notifications` FK insert). | Notifications created inside referral completion now pass `{ transaction }`; the COD-delivery notify moved outside its transaction. |
 | **Cleanups pass** — `OrderNote`, `DiscountRule` models; `middlewares/upload.middleware.js` (multer); `validators/catalog.validators.js`; `vitest` + `tests/` | Route guards, currency, image upload, order notes, auto-rules, tests were all outstanding. | See the "Small cleanups — DONE" table at the end of this file. `Category` gained `sortOrder`; `Payment.transactionId` nullable + `provider`; `Address.state` now nullable (many countries have none); `.env` JWT secrets rotated. |
 
-### 🟡 Missing endpoints — remaining
+### 🟢 Guest checkout — DONE (backend + frontend)
 
-1. **Guest checkout.**
-   `Order.userId` is nullable and the ERD allows it, but `POST /orders/checkout` is
-   behind `verifyJWT`. Either allow anonymous checkout or document that login is
-   required. *(Left as-is: the frontend has no guest flow yet.)*
+1. **`POST /orders/checkout` and `POST /orders/payments/verify`** use `optionalAuth`
+   instead of `verifyJWT`. A guest sends `shippingAddress` / `billingAddress` inline
+   plus `guestEmail`; the order is created with `userId = null` and `guestEmail`
+   set, the addresses are stored unowned (`addresses.user_id` relaxed to nullable),
+   and loyalty / referral / notifications are skipped. Payment verification
+   authorises a guest by matching `guestEmail`. Migration: `orders.guest_email`
+   added, `addresses.user_id` made nullable (`src/migrate.js`). Smoke tests added.
+2. **Frontend:** `CheckoutPage` builds the inline-address + `guestEmail` payload
+   when nobody is logged in (with per-step validation), shows a "checking out as a
+   guest" note and a "sign in for saved addresses / loyalty" prompt that returns to
+   `/checkout`. `OrderConfirmationPage` takes the order object straight from
+   checkout navigation state (no auth-only re-fetch), passes `guestEmail` to the
+   redirect-payment verify call (stashed in `sessionStorage` across a real gateway
+   redirect), and swaps "View My Orders" for "Create an account" for guests.
 
-### 🟠 Logic / correctness — remaining
+### 🟠 Logic / correctness
 
-2. **`collection.controller.js` `deleteCollection`** has a dead `if (productCount > 0)`
-   block with only comments inside. Either enforce a rule or delete the block.
+2. **`collection.controller.js` `deleteCollection` dead block — FIXED.** The empty
+   `if (productCount > 0)` block was removed. A collection is an optional curatorial
+   grouping (nullable FK, `onDelete: "SET NULL"`), unlike a required Category
+   (`RESTRICT`, blocks deletion), so deleting one now simply un-groups its products.
+   The response carries `{ unlinkedProducts }` and the message states how many were
+   removed.
 
-3. **`getProductBySlug`** treats any numeric-looking slug as an id. A product whose
-   slug is numeric (unlikely) would be unreachable. Low priority.
+3. **`getProductBySlug` id detection — FIXED (was worse than "low priority").**
+   Product ids are UUIDs, so the old `!isNaN(slug)` numeric check never matched an
+   id — and since `ProductCard` links to `/product/<uuid>`, `GET /products/<uuid>`
+   was returning **404 for every product-detail click**. It now tests for a UUID
+   shape: a UUID is looked up by `id`, anything else (including a numeric slug) by
+   `slug`. Covered by a smoke test.
 
-4. **Route ordering** in `product.routes.js` is now fixed; `category.routes.js` and
-   `collection.routes.js` still declare `/:slug` before `/admin` (harmless for GET,
-   but tidy up for consistency).
+4. **Route ordering — already fixed.** `category.routes.js` and
+   `collection.routes.js` both declare `/admin` and `/admin/:id` before `/:slug`
+   (this item was stale — see the "Small cleanups — DONE" table).
 
-### 🟡 Hardening / infra — remaining
+### 🟡 Hardening / infra
 
-5. **`npm test` is still the placeholder.** No test runner is set up — the
-   `scratchpad/*.mjs` scripts used during this work are throwaway. Add Vitest or
-   `node:test` + a seeded test DB.
+5. **Tests — isolated-DB support added; write suite is opt-in.** `npm test` runs a
+   vitest/supertest suite: 25 read-only checks against `DB_URI` plus a
+   `tests/write.test.js` lifecycle block that stays **skipped** unless `TEST_DB_URI`
+   is set. `src/db/index.js` uses `TEST_DB_URI` in any test context (Vitest, or
+   `NODE_ENV=test` for the sync/migrate/seed scripts); `vitest.config.js` loads
+   `.env.test` ahead of `.env`. See `.env.test.example` — create a second schema
+   (`CREATE DATABASE eternal_test;`), point `TEST_DB_URI` at it, seed it once, and
+   the write tests run. *Still to do: expand write-path coverage (checkout, refund,
+   admin CRUD) now that the harness exists.*
 
-6. **Secrets are committed in `.env`** (real Aiven credentials + JWT secrets).
-   Rotate them; `.env` is in `.gitignore` but confirm it was never committed.
+6. **Secrets — verified clean; Aiven rotation is a manual step.** Confirmed `.env`
+   was never committed (28 commits scanned; only `.env.example` with placeholder
+   `mysql://user:password@host` is tracked). JWT secrets were rotated. To rotate the
+   Aiven MySQL password: Aiven Console → the MySQL service → **Users** tab → reset
+   the `avnadmin` password (or create a new user and drop the old one) → update
+   `DB_URI` in `.env` → restart the app. `git.aivencloud` connection strings expire
+   with the password, so nothing else needs revoking.
 
-7. **`uuid` transitive advisory** via `sequelize@6` (moderate). Only fixable by a
-   breaking Sequelize downgrade — accept for now.
+7. **`uuid` advisory — FIXED.** `package.json` `overrides` pins `uuid@^11.1.1` for
+   the `sequelize@6` subtree. Sequelize only calls `uuid` `v1()` / `v4()` with no
+   arguments (the flaw is in v3/v5/v6 with a caller-supplied buffer), and v4 UUID
+   generation was verified after the bump. `npm audit` → **0 vulnerabilities**.
 
-8. **Validation coverage is partial** — auth + checkout + order-status are
-   schema-validated; the rest of the admin write routes still hand-roll checks.
-   Extend `validators/` incrementally.
+8. **Validation coverage — DONE.** `zod` `validateBody` now guards every write
+   route that had a hand-rolled check: blog create/update, category & collection
+   update, coupon update, discount-rule create/update, inventory update, review
+   status, settings upsert, profile update, change-password, staff create/update,
+   wishlist add, address update, saved-payment-method add, newsletter
+   subscribe/unsubscribe, campaign & banner create/update. New validator files:
+   `content.validators.js`, `user.validators.js` (+ additions to
+   `catalog.validators.js`). Smoke tests added.
 
 ### `plan.md` extras — all implemented
 
@@ -145,39 +181,71 @@ Status legend:
 | **`pages/admin/MarketingPage.jsx`** | 100% local mock (campaigns / subscribers / banners) | Rebuilt on `marketingApi` — campaign CRUD + **send** (real emails), banner CRUD + toggle, subscriber list + CSV export. |
 | **`pages/customer/ReferralPage.jsx`** | Fake points + hardcoded link | Rebuilt on `referralApi.getMine()` — real code, share link, stats, per-referral status (pending / completed +points). |
 | **`pages/customer/PaymentMethodsPage.jsx`** | Fake saved cards | Rebuilt on `paymentMethodApi` — add card (tokenised) / eSewa / Khalti / COD, set default, delete. |
-| **`pages/customer/CheckoutPage.jsx`** | Card-only, fake payment | Payment-method step: pick a saved method or a provider (Card / eSewa / Khalti / COD); handles the redirect + verify flow; newsletter opt-in wired. |
+| **`pages/customer/CheckoutPage.jsx`** | Card-only, fake payment; assumed a logged-in user | Payment-method step: pick a saved method or a provider (Card / eSewa / Khalti / COD); handles the redirect + verify flow; newsletter opt-in wired. Guest checkout: inline shipping/billing address + `guestEmail` payload when logged out, with per-step field validation. |
 | **`pages/customer/OrderConfirmationPage.jsx`** | Static mock order | Loads the real order; runs `orderApi.verifyPayment` on gateway return; shows real totals + COD messaging. |
 | **`pages/customer/RegisterPage.jsx`** | — | Reads `?ref=` and passes `referralCode`; shows the applied-code banner; wires newsletter opt-in; now renders the error state. |
 
-### 🟠 Broken API contract — remaining
+### 🟠 Broken API contract
 
 - Nothing outstanding. (Image upload, order notes, coupon auto-rules, currency,
   route guards all landed in the cleanups pass.)
+- **Fixed while verifying this section:** `pages/customer/ChangePasswordPage.jsx`
+  (the `/account/change-password` route) was a stub — `handleSubmit` just set a
+  success flag and never called the API. Now wired to
+  `userApi.changePassword({ oldPassword, newPassword })` with an error banner and a
+  saving state. (The Settings → Security tab already did this; the standalone page
+  didn't.)
 
-### ⚪ Dead buttons (cosmetic — wire or remove)
+### ⚪ Dead buttons — DONE (wired or removed)
 
-| Page | Element |
-|------|---------|
-| OrdersListPage | Export, per-row Print, per-row "Update Status" (the refresh icon) |
-| CustomersListPage | Export |
-| CollectionsAdminPage | Edit (pencil) — only delete works |
+| Page | Element | Resolution |
+|------|---------|------------|
+| OrdersListPage | Export | **Wired** — client-side CSV of the filtered rows (`src/utils/csv.js`). |
+| OrdersListPage | per-row "Update Status" (refresh icon) | **Wired** — now a forward-only "advance status" chevron (`pending → processing → shipped → delivered`), `PUT /orders/admin/:id/status`, hidden once terminal. |
+| OrdersListPage | per-row Print, "Date range" filter | **Removed** — no invoice/print view or date-filter backing; Print duplicated View. (Date range wasn't on the list but was the same dead-button class on the same page.) |
+| CustomersListPage | Export | **Wired** — client-side CSV of the filtered rows. |
+| CollectionsAdminPage | Edit (pencil), both table + grid | **Wired** — opens the side panel in edit mode, prefilled; saves via `PUT /collections/admin/:id` (`{ name, description }`). Collection list mapper now carries `description` / `imageUrl`. |
 
-### 🟢 Working well (no action)
+### 🟢 Working well (verified)
 
-`ProductsListPage` (list + delete), `CategoriesPage` (full CRUD),
-`CollectionsAdminPage` (create + delete), `OrdersListPage` (list + filter),
-`OrderDetailAdminPage` (detail + status + tracking), `ReviewsPage` (approve /
-reject), `CustomersListPage` (list + view), `CustomerDetailPage` (real stats +
-orders + addresses), `CouponsPage` (full CRUD), `UsersPage` (staff CRUD),
-`AddEditProductPage` (create + edit incl. variants, any status),
-`SettingsPage` (store config + change password),
-`AdminDashboard` + `AnalyticsDashboard` (live metrics, date-range refetch),
-`OrderDetailAdminPage` (detail + status + tracking + refund),
-`MarketingPage` (campaigns + banners + subscribers),
-`LoyaltyPage` / `NotificationsPage` / `ReferralPage` / `PaymentMethodsPage` (live),
-`CheckoutPage` (multi-provider payments), `AdminLayout` guard,
-customer auth (login / register + referral / forgot / reset), `MyReviewsPage`,
-shop / cart / wishlist / checkout flow.
+Re-checked end to end after the validation pass — all confirmed working; one
+regression found and fixed (see below):
+
+- `ProductsListPage` (list + delete), `AddEditProductPage` (create + edit incl.
+  variants, any status)
+- `CategoriesPage` (full CRUD), `CollectionsAdminPage` (full CRUD),
+  `CouponsPage` (full CRUD incl. auto-rules)
+- `OrdersListPage` (list + filter + CSV export + quick status advance),
+  `OrderDetailAdminPage` (detail + status + tracking + refund + notes)
+- `ReviewsPage` (approve / reject), `MyReviewsPage`
+- `CustomersListPage` (list + view + CSV export), `CustomerDetailPage`
+  (real stats + orders + addresses)
+- `UsersPage` (staff CRUD), `SettingsPage` (store config + change password)
+- `AdminDashboard` + `AnalyticsDashboard` (live metrics, date-range refetch)
+- `MarketingPage` (campaigns + banners + subscribers)
+- `LoyaltyPage` / `NotificationsPage` / `ReferralPage` / `PaymentMethodsPage` (live)
+- `CheckoutPage` (account + guest, multi-provider payments), `AdminLayout` /
+  account route guards
+- customer auth (login / register + referral / forgot / reset)
+- shop / cart / wishlist / checkout flow
+
+**Bugs fixed during this check:**
+
+- `POST /payment-methods` — the `paymentMethodSchema` added in the validation pass
+  coerced the form's empty `expiryMonth` / `expiryYear` strings to `0` and then
+  failed `min(1)`, so adding an eSewa / Khalti / COD method (or a card without an
+  expiry) returned `400`. The schema now maps blank numeric fields to `undefined`
+  before validating. Covered by a new smoke test.
+- **`ProductsListPage` crashed** ("Objects are not valid as a React child … {name,
+  slug}"). `GET /products` returns `category` / `collection` as `{ name, slug }`
+  objects, and the page rendered `{product.category}` from the raw response. Fixed
+  by running the list through `normalizeProduct` (which flattens them to strings
+  and guarantees `images` / `price` / `inStock`). The two per-row Delete buttons
+  were also unwired — now call `handleDeleteProduct`.
+- **`ShopPage`** had the same latent crash: its inline mapper looked for
+  `p.Category?.name` (capital C — the API sends lowercase `category`) and fell
+  through to the raw object. Fixed to read `p.category?.name`. `normalizeProduct`
+  itself hardened so a stray object can never leak into the `category` string.
 
 ### General frontend notes
 
@@ -218,13 +286,14 @@ shop / cart / wishlist / checkout flow.
    | Product image upload | `multer` → `public/uploads`, `POST /products/admin/upload` (5 MB, image types), `ASSET_BASE_URL` env; Vite proxies `/uploads`. `AddEditProductPage` drop zone + file picker wired. |
    | Order notes | `OrderNote` model, `GET/POST /orders/admin/:id/notes` + `DELETE /orders/admin/notes/:noteId`; notes panel in `OrderDetailAdminPage`. |
    | Coupon auto-rules | `DiscountRule` model (`MIN_SUBTOTAL`/`MIN_ITEMS` → `FREE_SHIPPING`/`PERCENT_OFF`/`FIXED_OFF`), `GET/POST/PUT/DELETE /coupons/admin/rules`, applied in checkout. |
-   | Test suite | `vitest` + `supertest`; `tests/smoke.test.js` (17 read-only tests: infra, auth, RBAC, catalog, validation, loyalty/referral/notifications). `npm test`. |
+   | Test suite | `vitest` + `supertest`; `tests/smoke.test.js` (25 read-only tests: infra, auth, RBAC, catalog incl. product-by-id, write-route validation, guest-checkout validation, loyalty/referral/notifications, payment-method schema) + opt-in `tests/write.test.js`. `npm test`. |
+   | Guest checkout | **Backend:** `optionalAuth` middleware; `POST /orders/checkout` + `/payments/verify` accept anonymous callers; `orders.guest_email` + nullable `addresses.user_id` (migration); inline address bodies; loyalty/referral/notifications skipped for guests. **Frontend:** `CheckoutPage` guest inline-address flow + step validation; `OrderConfirmationPage` order-from-state + guest verify + guest CTAs. |
    | Secret rotation | JWT `ACCESS_/REFRESH_TOKEN_SECRET` regenerated in `.env`. *(Aiven DB creds still need rotating via the Aiven console.)* |
    | Wider zod | validators added for product create/update, category/collection create, coupon create, address create, review create. |
    | Route ordering | `collection.routes.js` and `category.routes.js` now declare `/admin*` before `/:slug`. |
 8. **Still open:** real eSewa/Khalti production keys, real SMTP, loyalty redemption
-   at checkout, guest checkout, server-side cart, a dedicated test DB (the suite
-   currently runs read-only against dev).
+   at checkout, server-side cart, a dedicated test DB (the suite currently runs
+   read-only against dev).
 
 ### Run after pulling this change
 
@@ -234,7 +303,8 @@ npm install          # multer, vitest, supertest added
 npm run sync         # new tables: campaigns, banners, referrals, payment_methods,
                      #   newsletter_subscribers, loyalty_transactions, notifications,
                      #   order_notes, discount_rules  (+ user / payment / category cols)
-npm run migrate      # adds orders.subtotal_amount / tax_amount / updated_at
+npm run migrate      # orders.subtotal_amount / tax_amount / updated_at / guest_email;
+                     #   relaxes addresses.user_id to nullable (guest checkout)
 npm run seed         # (optional) demo marketing data + referral codes
 npm run dev
 ```

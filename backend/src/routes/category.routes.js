@@ -3,7 +3,7 @@ import { getCategories, getCategoryBySlug, createCategory, updateCategory, delet
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { verifyAdmin } from "../middlewares/admin.middleware.js";
 import { validateBody } from "../middlewares/validate.middleware.js";
-import { groupSchema, reorderSchema } from "../validators/catalog.validators.js";
+import { groupSchema, groupUpdateSchema, reorderSchema } from "../validators/catalog.validators.js";
 
 const router = Router();
 
@@ -13,7 +13,7 @@ router.route("/").get(getCategories);
 router.route("/admin").post(verifyJWT, verifyAdmin, validateBody(groupSchema), createCategory);
 router.route("/admin/reorder").put(verifyJWT, verifyAdmin, validateBody(reorderSchema), reorderCategories);
 router.route("/admin/:id")
-  .put(verifyJWT, verifyAdmin, updateCategory)
+  .put(verifyJWT, verifyAdmin, validateBody(groupUpdateSchema), updateCategory)
   .delete(verifyJWT, verifyAdmin, deleteCategory);
 
 router.route("/:slug").get(getCategoryBySlug);

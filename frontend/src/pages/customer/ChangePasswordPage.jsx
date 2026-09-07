@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiEye, FiEyeOff, FiCheck, FiCheckCircle } from "react-icons/fi";
+import { userApi } from "../../services/api";
 function getStrength(password) {
   if (!password) return { label: "", level: 0, color: "#f0ebe2" };
   let score = 0;
@@ -24,6 +25,8 @@ function ChangePasswordPage() {
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
   const strength = getStrength(newPass);
   const requirements = [
     { label: "8+ characters", met: newPass.length >= 8 },
@@ -31,10 +34,19 @@ function ChangePasswordPage() {
     { label: "Number", met: /[0-9]/.test(newPass) },
     { label: "Special character", met: /[^a-zA-Z0-9]/.test(newPass) }
   ];
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!current || !newPass || newPass !== confirm) return;
-    setSuccess(true);
+    setSaving(true);
+    setError("");
+    try {
+      await userApi.changePassword({ oldPassword: current, newPassword: newPass });
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message || "Could not change your password. Check your current password and try again.");
+    } finally {
+      setSaving(false);
+    }
   }
   if (success) {
     return <div className="max-w-md mx-auto">
@@ -78,6 +90,10 @@ function ChangePasswordPage() {
       <h1 className="font-display text-3xl mb-8" style={{ color: "#0a0a0a" }}>Change Password</h1>
 
       <form onSubmit={handleSubmit} className="border p-6 sm:p-8 flex flex-col gap-6" style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa", fontFamily: "Manrope, sans-serif" }}>
+
+        {error && (
+          <p className="text-xs px-3 py-2.5 rounded" style={{ backgroundColor: "#fef2f2", color: "#b91c1c" }}>{error}</p>
+        )}
 
         {
     /* Current password */
@@ -198,9 +214,9 @@ function ChangePasswordPage() {
     type="submit"
     className="w-full py-3.5 text-xs tracking-widest uppercase transition-colors hover:bg-[#2d4a3e] disabled:opacity-40 disabled:cursor-not-allowed"
     style={{ backgroundColor: "#0a0a0a", color: "#fafafa" }}
-    disabled={!current || !newPass || newPass !== confirm || strength.level < 2}
+    disabled={saving || !current || !newPass || newPass !== confirm || strength.level < 2}
   >
-          Update Password
+          {saving ? "Updating…" : "Update Password"}
         </button>
       </form>
     </div>;

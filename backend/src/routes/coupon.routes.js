@@ -14,7 +14,7 @@ import {
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { verifyAdmin } from "../middlewares/admin.middleware.js";
 import { validateBody } from "../middlewares/validate.middleware.js";
-import { couponSchema } from "../validators/catalog.validators.js";
+import { couponSchema, couponUpdateSchema, ruleSchema, ruleUpdateSchema } from "../validators/catalog.validators.js";
 
 const router = Router();
 
@@ -28,9 +28,9 @@ router.use(verifyAdmin);
 // Automatic discount rules — declared before "/admin/:id" so "rules" isn't read as an id
 router.route("/admin/rules")
   .get(listRules)
-  .post(createRule);
+  .post(validateBody(ruleSchema), createRule);
 router.route("/admin/rules/:id")
-  .put(updateRule)
+  .put(validateBody(ruleUpdateSchema), updateRule)
   .delete(deleteRule);
 
 router.route("/admin")
@@ -39,7 +39,7 @@ router.route("/admin")
 
 router.route("/admin/:id")
   .get(getCouponById)
-  .put(updateCoupon)
+  .put(validateBody(couponUpdateSchema), updateCoupon)
   .delete(deleteCoupon);
 
 export default router;

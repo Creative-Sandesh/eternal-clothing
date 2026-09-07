@@ -1,8 +1,12 @@
 import { useState, useEffect } from "react";
 import { useMoney } from "../../context/SettingsContext";
 import { useNavigate } from "react-router-dom";
-import { FiSearch, FiDownload, FiEye, FiPrinter, FiRefreshCw, FiCalendar } from "react-icons/fi";
+import { FiSearch, FiDownload, FiEye, FiChevronRight, FiLoader } from "react-icons/fi";
 import { orderApi } from "../../services/api";
+import { downloadCsv } from "../../utils/csv";
+
+// Forward-only status progression the quick-advance button steps through.
+const NEXT_STATUS = { pending: "processing", processing: "shipped", shipped: "delivered" };
 
 const statusColors = {
   pending: "bg-amber-100 text-amber-700",
@@ -31,6 +35,7 @@ function OrdersListPage() {
   const [search, setSearch] = useState("");
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [advancingId, setAdvancingId] = useState(null);
 
   const fetchOrders = async () => {
     try {
@@ -57,6 +62,36 @@ function OrdersListPage() {
   useEffect(() => {
     fetchOrders();
   }, []);
+
+  async function advanceStatus(order) {
+    const next = NEXT_STATUS[order.status];
+    if (!next || advancingId) return;
+    setAdvancingId(order.id);
+    try {
+      await orderApi.updateStatus(order.id, { status: next.toUpperCase() });
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: next } : o)));
+    } catch (err) {
+      console.error("Failed to advance order status", err);
+    } finally {
+      setAdvancingId(null);
+    }
+  }
+
+  function exportCsv() {
+    downloadCsv(
+      `orders-${new Date().toISOString().slice(0, 10)}.csv`,
+      [
+        { key: "orderNumber", label: "Order #" },
+        { key: "customerName", label: "Customer" },
+        { key: "customerEmail", label: "Email" },
+        { label: "Items", format: (o) => o.items.length },
+        { label: "Total", format: (o) => o.total.toFixed(2) },
+        { key: "status", label: "Status" },
+        { label: "Date", format: (o) => (o.createdAt ? new Date(o.createdAt).toISOString().slice(0, 10) : "") },
+      ],
+      filtered
+    );
+  }
   const counts = tabs.reduce((acc, t) => {
     acc[t.value] = t.value === "all" ? orders.length : orders.filter((o) => o.status === t.value).length;
     return acc;
@@ -81,7 +116,11 @@ function OrdersListPage() {
           <h1 className="font-display text-2xl text-gray-900">Orders</h1>
           <p className="text-sm text-gray-500 mt-0.5">{orders.length} orders total</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors">
+        <button
+    onClick={exportCsv}
+    disabled={filtered.length === 0}
+    className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-40"
+  >
           <FiDownload size={14} /> Export
         </button>
       </div>
@@ -119,8 +158,8 @@ function OrdersListPage() {
         {
     /* Search + Date filter */
   }
-        <div className="flex flex-col sm:flex-row gap-3 p-4">
-          <div className="relative flex-1">
+        <div className="p-4">
+          <div className="relative">
             <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
             <input
     type="text"
@@ -130,9 +169,6 @@ function OrdersListPage() {
     className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#2d4a3e] transition-colors"
   />
           </div>
-          <button className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 transition-colors">
-            <FiCalendar size={14} /> Date range
-          </button>
         </div>
 
         {
@@ -181,18 +217,16 @@ function OrdersListPage() {
   >
                         <FiEye size={14} />
                       </button>
-                      <button
-    className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-    title="Print Invoice"
+                      {NEXT_STATUS[order.status] && (
+                        <button
+    onClick={() => advanceStatus(order)}
+    disabled={advancingId === order.id}
+    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-40"
+    title={`Mark as ${NEXT_STATUS[order.status]}`}
   >
-                        <FiPrinter size={14} />
-                      </button>
-                      <button
-    className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-    title="Update Status"
-  >
-                        <FiRefreshCw size={14} />
-                      </button>
+                          {advancingId === order.id ? <FiLoader size={14} className="animate-spin" /> : <FiChevronRight size={14} />}
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>)}

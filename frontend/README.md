@@ -134,12 +134,15 @@ Pages are `React.lazy`‑loaded. Unknown storefront paths fall through to `NotFo
   symbol table (`NPR रू`, `INR ₹`, `USD $`, `GBP £`, `EUR €`, `AUD A$`, `CAD C$`).
   Never hardcode a currency symbol — call `money()` or read `symbol`. Admins switch
   currency from **Settings → General** and the whole UI reformats on save.
-- Some frontend pages have no backend counterpart yet (`ForgotPasswordPage`,
-  `ResetPasswordPage`, `LoyaltyPage`, `NotificationsPage`, `ReferralPage`,
-  `PaymentMethodsPage`, `MarketingPage`, admin `UsersPage`, `StoreLocatorPage`) — see the
-  backend README's TODO list.
-- Product ratings/review counts are not aggregated by the API, so `rating` currently
-  renders as `0` until the backend provides `avgRating` / `reviewCount`.
+- **Guest checkout**: `/checkout` and `/order-confirmation` are public. When nobody
+  is logged in, `CheckoutPage` collects an email + shipping/billing address inline
+  and posts them to `POST /orders/checkout` as `guestEmail` + `shippingAddress` /
+  `billingAddress` objects (no token). `OrderConfirmationPage` renders the order
+  handed over in navigation state and, for a redirect payment, verifies it with the
+  `guestEmail` (kept in `sessionStorage` across a real gateway hop). `StoreLocatorPage`
+  is intentionally static content.
+- Product ratings and review counts come from the API (`avgRating` / `reviewCount`
+  on product payloads).
 
 ---
 

@@ -17,15 +17,11 @@ function CollectionsAdminPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState("table");
   const [showPanel, setShowPanel] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [selectedProducts, setSelectedProducts] = useState([]);
-  const [form, setForm] = useState({
-    name: "",
-    slug: "",
-    description: "",
-    startDate: "",
-    endDate: "",
-    status: "Active"
-  });
+  const emptyForm = { name: "", slug: "", description: "", startDate: "", endDate: "", status: "Active" };
+  const [form, setForm] = useState(emptyForm);
 
   const fetchData = async () => {
     try {
@@ -38,6 +34,8 @@ function CollectionsAdminPage() {
         id: c.id,
         name: c.name,
         slug: c.slug,
+        description: c.description || "",
+        imageUrl: c.imageUrl || "",
         productCount: Number(c.productCount || 0),
         startDate: c.createdAt ? new Date(c.createdAt).toISOString().split("T")[0] : "2024-01-01",
         endDate: "2025-12-31",
@@ -64,30 +62,67 @@ function CollectionsAdminPage() {
     setSelectedProducts((prev) => prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]);
   }
 
-  async function handleCreate() {
-    if (!form.name) return;
-    try {
-      const res = await collectionApi.create({
-        name: form.name,
-        description: form.description
-      });
-      if (res.data) {
-        setCollections((prev) => [...prev, {
-          id: res.data.id,
-          name: res.data.name,
-          slug: res.data.slug,
-          productCount: selectedProducts.length,
-          startDate: form.startDate || new Date().toISOString().split("T")[0],
-          endDate: form.endDate || "2025-12-31",
-          status: form.status
-        }]);
-      }
-    } catch (err) {
-      console.error("Failed to create collection", err);
-    }
-    setForm({ name: "", slug: "", description: "", startDate: "", endDate: "", status: "Active" });
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm);
     setSelectedProducts([]);
+    setShowPanel(true);
+  }
+
+  function openEdit(col) {
+    setEditingId(col.id);
+    setForm({
+      name: col.name || "",
+      slug: col.slug || "",
+      description: col.description || "",
+      startDate: "",
+      endDate: "",
+      status: col.status || "Active"
+    });
+    setSelectedProducts([]);
+    setShowPanel(true);
+  }
+
+  function closePanel() {
     setShowPanel(false);
+    setEditingId(null);
+    setForm(emptyForm);
+    setSelectedProducts([]);
+  }
+
+  async function handleSave() {
+    if (!form.name.trim() || saving) return;
+    setSaving(true);
+    const payload = { name: form.name.trim(), description: form.description };
+    try {
+      if (editingId) {
+        const res = await collectionApi.update(editingId, payload);
+        const updated = res.data || {};
+        setCollections((prev) => prev.map((c) => (c.id === editingId
+          ? { ...c, name: updated.name ?? payload.name, slug: updated.slug ?? c.slug, description: updated.description ?? payload.description }
+          : c)));
+      } else {
+        const res = await collectionApi.create(payload);
+        if (res.data) {
+          setCollections((prev) => [...prev, {
+            id: res.data.id,
+            name: res.data.name,
+            slug: res.data.slug,
+            description: res.data.description || "",
+            imageUrl: "",
+            productCount: 0,
+            startDate: new Date().toISOString().split("T")[0],
+            endDate: "2025-12-31",
+            status: form.status
+          }]);
+        }
+      }
+      closePanel();
+    } catch (err) {
+      console.error("Failed to save collection", err);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function deleteCollection(id) {
@@ -117,7 +152,7 @@ function CollectionsAdminPage() {
             </button>
           </div>
           <button
-    onClick={() => setShowPanel(true)}
+    onClick={openCreate}
     className="flex items-center gap-2 px-4 py-2 bg-[#0a0a0a] text-white text-sm font-medium rounded-lg hover:bg-[#2d4a3e] transition-colors"
   >
             <FiPlus size={16} /> Create Collection
@@ -151,7 +186,7 @@ function CollectionsAdminPage() {
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-1">
-                          <button className="p-1.5 text-[#8c8277] hover:text-[#0a0a0a] hover:bg-gray-100 rounded-md transition-colors"><FiEdit2 size={13} /></button>
+                          <button onClick={() => openEdit(col)} className="p-1.5 text-[#8c8277] hover:text-[#0a0a0a] hover:bg-gray-100 rounded-md transition-colors"><FiEdit2 size={13} /></button>
                           <button onClick={() => deleteCollection(col.id)} className="p-1.5 text-[#8c8277] hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"><FiTrash2 size={13} /></button>
                         </div>
                       </td>
@@ -170,7 +205,7 @@ function CollectionsAdminPage() {
                       {col.status}
                     </span>
                     <div className="flex gap-1">
-                      <button className="p-1 text-[#8c8277] hover:text-[#0a0a0a] transition-colors"><FiEdit2 size={12} /></button>
+                      <button onClick={() => openEdit(col)} className="p-1 text-[#8c8277] hover:text-[#0a0a0a] transition-colors"><FiEdit2 size={12} /></button>
                       <button onClick={() => deleteCollection(col.id)} className="p-1 text-[#8c8277] hover:text-red-500 transition-colors"><FiTrash2 size={12} /></button>
                     </div>
                   </div>
@@ -190,8 +225,8 @@ function CollectionsAdminPage() {
     className="w-80 flex-shrink-0 bg-white border border-gray-100 rounded-xl h-fit sticky top-6 overflow-hidden"
   >
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                <p className="font-semibold text-sm text-[#0a0a0a]">New Collection</p>
-                <button onClick={() => setShowPanel(false)} className="text-[#8c8277] hover:text-[#0a0a0a] p-1 rounded-md hover:bg-gray-100 transition-colors">
+                <p className="font-semibold text-sm text-[#0a0a0a]">{editingId ? "Edit Collection" : "New Collection"}</p>
+                <button onClick={closePanel} className="text-[#8c8277] hover:text-[#0a0a0a] p-1 rounded-md hover:bg-gray-100 transition-colors">
                   <FiX size={16} />
                 </button>
               </div>
@@ -278,10 +313,10 @@ function CollectionsAdminPage() {
                   </select>
                 </div>
                 <div className="flex gap-2 pt-2">
-                  <button onClick={handleCreate} className="flex-1 flex items-center justify-center gap-2 py-2 bg-[#0a0a0a] text-white text-sm rounded-lg hover:bg-[#2d4a3e] transition-colors">
-                    <FiSave size={14} /> Save
+                  <button onClick={handleSave} disabled={saving || !form.name.trim()} className="flex-1 flex items-center justify-center gap-2 py-2 bg-[#0a0a0a] text-white text-sm rounded-lg hover:bg-[#2d4a3e] transition-colors disabled:opacity-40">
+                    <FiSave size={14} /> {saving ? "Saving…" : editingId ? "Update" : "Save"}
                   </button>
-                  <button onClick={() => setShowPanel(false)} className="px-4 py-2 border border-gray-200 text-sm rounded-lg hover:bg-gray-50 transition-colors text-[#8c8277]">
+                  <button onClick={closePanel} className="px-4 py-2 border border-gray-200 text-sm rounded-lg hover:bg-gray-50 transition-colors text-[#8c8277]">
                     Cancel
                   </button>
                 </div>

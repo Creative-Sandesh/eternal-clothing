@@ -13,15 +13,19 @@ import {
   deleteOrderNote
 } from "../controllers/order.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
+import { optionalAuth } from "../middlewares/optionalAuth.middleware.js";
 import { verifyAdmin } from "../middlewares/admin.middleware.js";
 import { validateBody } from "../middlewares/validate.middleware.js";
-import { checkoutSchema, orderStatusSchema } from "../validators/order.validators.js";
+import { checkoutSchema, verifyPaymentSchema, orderStatusSchema } from "../validators/order.validators.js";
 
 const router = Router();
 
+// Checkout + payment verification support both logged-in and guest callers.
+router.route("/checkout").post(optionalAuth, validateBody(checkoutSchema), checkoutOrder);
+router.route("/payments/verify").post(optionalAuth, validateBody(verifyPaymentSchema), verifyPayment);
+
 // Customer only routes
-router.route("/checkout").post(verifyJWT, validateBody(checkoutSchema), checkoutOrder);
-router.route("/payments/verify").post(verifyJWT, verifyPayment);
+
 router.route("/my-orders").get(verifyJWT, getMyOrders);
 router.route("/my-orders/:id").get(verifyJWT, getMyOrderById);
 

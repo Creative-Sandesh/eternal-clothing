@@ -24,6 +24,13 @@ See `README.md` for setup and the full API reference.
 * Checkout: transaction with row-locked variants, coupon, shipping + tax from store
   settings, loyalty accrual, referral completion. Stores `subtotalAmount`,
   `taxAmount`, `discountAmount`, `shippingFee`, `totalAmount`.
+* **Guest checkout** — `POST /orders/checkout` uses `optionalAuth`: with no token
+  the caller supplies `shippingAddress` / `billingAddress` inline plus a
+  `guestEmail`; the order stores `guestEmail` and has a null `userId`, the
+  addresses are created unowned, and loyalty / referral / notifications are
+  skipped. `POST /orders/payments/verify` authorises a guest by `guestEmail`.
+  The storefront `CheckoutPage` / `OrderConfirmationPage` drive this end to end
+  for a logged-out shopper.
 * **Payment providers** (`src/utils/payments.js`):
   * `MOCK` / `CARD` (saved card) — settle instantly.
   * `COD` — payment `PENDING`; settled (and loyalty accrued) when the order is
@@ -90,6 +97,11 @@ See `README.md` for setup and the full API reference.
   real keys before production.
 * Notifications are polled on page load (no websockets).
 * Loyalty point *redemption* at checkout is not built (accrual + ledger only).
-* `npm test` runs a read-only vitest/supertest smoke suite (17 tests) against the
-  dev database. JWT secrets in `.env` have been rotated; the Aiven DB credentials
-  still need a manual rotation via the Aiven console.
+* `npm test` runs 25 read-only vitest/supertest checks against the dev database;
+  the `tests/write.test.js` lifecycle block runs only when `TEST_DB_URI` points at
+  an isolated schema (`.env.test.example`).
+* Every write route is `zod`-validated (`src/validators/`).
+* `npm audit` is clean — the `uuid` advisory is pinned out via `package.json`
+  `overrides`.
+* JWT secrets in `.env` have been rotated; the Aiven DB credentials still need a
+  manual rotation via the Aiven console (`.env` was never committed).

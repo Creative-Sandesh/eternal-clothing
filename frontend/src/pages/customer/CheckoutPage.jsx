@@ -67,6 +67,7 @@ function CheckoutPage() {
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderError, setOrderError] = useState("");
+  const [stepError, setStepError] = useState("");
 
   // Payment
   const [paymentProvider, setPaymentProvider] = useState("CARD");
@@ -135,6 +136,34 @@ function CheckoutPage() {
   function updateForm(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
+
+  // Validate the current step before advancing. Guests must provide contact +
+  // address details up front since there are no saved addresses to fall back on.
+  function goNext() {
+    setStepError("");
+    if (currentStep === 1 && (!form.email || !form.email.includes("@"))) {
+      setStepError("Enter a valid email address to continue.");
+      return;
+    }
+    if (currentStep === 2) {
+      const manualEntry = !user || selectedAddressId === null;
+      if (manualEntry && (!form.address.trim() || !form.city.trim() || !form.postcode.trim())) {
+        setStepError("Enter your address, city and postcode.");
+        return;
+      }
+    }
+    if (currentStep === 3 && !form.billingSameAsShipping) {
+      if (!form.billingAddress.trim() || !form.billingCity.trim() || !form.billingPostcode.trim()) {
+        setStepError("Enter your billing address, or tick “same as shipping”.");
+        return;
+      }
+    }
+    setCurrentStep((s) => s + 1);
+  }
+  function goBack() {
+    setStepError("");
+    setCurrentStep((s) => s - 1);
+  }
   function formatCardNumber(value) {
     const digits = value.replace(/\D/g, "").slice(0, 16);
     return digits.replace(/(.{4})/g, "$1 ").trim();
@@ -179,37 +208,6 @@ function CheckoutPage() {
     setOrderLoading(true);
     setOrderError("");
     try {
-      let shippingAddressId = selectedAddressId;
-      let billingAddressId = selectedAddressId;
-
-      // If no saved address selected (guest or new address), create one
-      if (!shippingAddressId && user) {
-        const newAddr = await addressApi.create({
-          firstName: form.firstName,
-          lastName: form.lastName,
-          addressLine1: form.address,
-          city: form.city,
-          postalCode: form.postcode,
-          country: form.country,
-          isDefault: false
-        });
-        shippingAddressId = newAddr.data?.id;
-        billingAddressId = shippingAddressId;
-      }
-
-      if (!form.billingSameAsShipping && user) {
-        const billingAddr = await addressApi.create({
-          firstName: form.firstName,
-          lastName: form.lastName,
-          addressLine1: form.billingAddress,
-          city: form.billingCity,
-          postalCode: form.billingPostcode,
-          country: form.country,
-          isDefault: false
-        });
-        billingAddressId = billingAddr.data?.id;
-      }
-
       // Map cart items to backend format
       const orderItems = items.map((item) => ({
         productVariantId: item.productVariantId,
@@ -224,18 +222,82 @@ function CheckoutPage() {
 
       const payload = {
         items: orderItems,
-        shippingAddressId,
-        billingAddressId,
         couponCode: appliedCoupon || undefined,
       };
+
+      if (user) {
+        // ── Account checkout: reference / create saved Address rows ──
+        let shippingAddressId = selectedAddressId;
+        let billingAddressId = selectedAddressId;
+
+        if (!shippingAddressId) {
+          const newAddr = await addressApi.create({
+            firstName: form.firstName,
+            lastName: form.lastName,
+            addressLine1: form.address,
+            city: form.city,
+            postalCode: form.postcode,
+            country: form.country,
+            isDefault: false
+          });
+          shippingAddressId = newAddr.data?.id;
+          billingAddressId = shippingAddressId;
+        }
+
+        if (!form.billingSameAsShipping) {
+          const billingAddr = await addressApi.create({
+            firstName: form.firstName,
+            lastName: form.lastName,
+            addressLine1: form.billingAddress,
+            city: form.billingCity,
+            postalCode: form.billingPostcode,
+            country: form.country,
+            isDefault: false
+          });
+          billingAddressId = billingAddr.data?.id;
+        }
+
+        payload.shippingAddressId = shippingAddressId;
+        payload.billingAddressId = billingAddressId;
+      } else {
+        // ── Guest checkout: send the addresses inline + a contact email ──
+        if (!form.email || !form.email.includes("@")) {
+          setOrderError("Enter a valid email address in the Contact step.");
+          setCurrentStep(1);
+          return;
+        }
+        const shipping = {
+          addressLine1: form.address.trim(),
+          city: form.city.trim(),
+          postalCode: form.postcode.trim(),
+          country: form.country,
+        };
+        if (!shipping.addressLine1 || !shipping.city || !shipping.postalCode) {
+          setOrderError("Enter your full shipping address.");
+          setCurrentStep(2);
+          return;
+        }
+        payload.guestEmail = form.email.trim();
+        payload.shippingAddress = shipping;
+        payload.billingAddress = form.billingSameAsShipping
+          ? shipping
+          : {
+              addressLine1: form.billingAddress.trim(),
+              city: form.billingCity.trim(),
+              postalCode: form.billingPostcode.trim(),
+              country: form.country,
+            };
+      }
+
       // Use a saved method if the selected radio maps to one, else the raw provider.
       const savedMatch = savedMethods.find((m) => m.id === selectedSavedMethodId && m.type === paymentProvider);
-      if (savedMatch) payload.savedPaymentMethodId = savedMatch.id;
+      if (savedMatch && user) payload.savedPaymentMethodId = savedMatch.id;
       else payload.provider = paymentProvider;
 
       const res = await orderApi.checkout(payload);
       const order = res.data?.order;
       const orderId = order?.id;
+      const guestEmail = user ? undefined : form.email.trim();
 
       // Opt into the newsletter if requested.
       if (form.newsletter && form.email) {
@@ -247,7 +309,14 @@ function CheckoutPage() {
       if (res.data?.requiresPayment) {
         const rp = res.data.redirect?.redirect;
         if (rp?.method === "POST" && rp.url && !res.data.redirect?.sandbox) {
-          // Real gateway (eSewa) — POST the signed form to the provider.
+          // Real gateway (eSewa) — the redirect back loses React state, so stash
+          // what the confirmation page needs to verify the payment.
+          try {
+            sessionStorage.setItem(
+              "eternal_pending_verify",
+              JSON.stringify({ orderId, provider: paymentProvider, guestEmail })
+            );
+          } catch { /* private mode — the confirmation page still has the query params */ }
           const f = document.createElement("form");
           f.method = "POST";
           f.action = rp.url;
@@ -261,11 +330,11 @@ function CheckoutPage() {
           return;
         }
         // Sandbox / no keys — confirm on the confirmation page.
-        navigate("/order-confirmation", { state: { orderId, provider: paymentProvider, verify: true } });
+        navigate("/order-confirmation", { state: { orderId, order, provider: paymentProvider, verify: true, guestEmail } });
         return;
       }
 
-      navigate("/order-confirmation", { state: { orderId } });
+      navigate("/order-confirmation", { state: { orderId, order } });
     } catch (err) {
       setOrderError(err.message || "Failed to place order. Please try again.");
     } finally {
@@ -343,6 +412,11 @@ function CheckoutPage() {
   }
               {currentStep === 1 && <div>
                   <h2 className="font-display text-2xl mb-6">Contact Details</h2>
+                  {!user && (
+                    <p className="text-sm text-eternal-stone mb-6 -mt-2">
+                      Checking out as a guest. We'll email your order confirmation and updates to this address.
+                    </p>
+                  )}
                   <div className="space-y-6">
                     <div>
                       <label className={labelClass}>Email address</label>
@@ -368,12 +442,19 @@ function CheckoutPage() {
                         Subscribe to our newsletter for early access and exclusive offers
                       </span>
                     </label>
-                    <p className="text-xs text-eternal-stone">
-                      Already have an account?{" "}
-                      <Link to="/login" className="underline text-eternal-black">
-                        Sign in
-                      </Link>
-                    </p>
+                    {!user && (
+                      <p className="text-xs text-eternal-stone">
+                        Already have an account?{" "}
+                        <Link
+                          to="/login"
+                          state={{ from: { pathname: "/checkout" } }}
+                          className="underline text-eternal-black"
+                        >
+                          Sign in
+                        </Link>{" "}
+                        for saved addresses, faster checkout and loyalty points.
+                      </p>
+                    )}
                   </div>
                 </div>}
 
@@ -774,15 +855,18 @@ function CheckoutPage() {
               {
     /* Navigation */
   }
+              {stepError && (
+                <p className="mt-6 text-sm text-red-600 bg-red-50 border border-red-200 px-4 py-3">{stepError}</p>
+              )}
               <div className="mt-8 flex items-center justify-between">
                 {currentStep > 1 ? <button
-    onClick={() => setCurrentStep((s) => s - 1)}
+    onClick={goBack}
     className="text-sm text-eternal-stone underline underline-offset-2"
   >
                     Back
                   </button> : <div />}
                 {currentStep < 4 && <button
-    onClick={() => setCurrentStep((s) => s + 1)}
+    onClick={goNext}
     className="bg-eternal-black text-eternal-white px-8 py-4 text-sm tracking-widest uppercase flex items-center gap-2 hover:bg-eternal-green transition-colors"
   >
                     Continue

@@ -104,20 +104,20 @@ const deleteCollection = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Collection not found");
   }
 
-  // Check if collection contains products
+  // A collection is an optional curatorial grouping, not a taxonomy: the
+  // Product.collectionId FK is nullable with onDelete: "SET NULL". Deleting a
+  // collection simply un-groups its products (unlike a Category, which is
+  // required and blocks deletion while products reference it).
   const productCount = await Product.count({ where: { collectionId: id } });
-  if (productCount > 0) {
-    // When deleting a collection, we could also just set collection_id to null
-    // But to be safe, let's reject or we can nullify.
-    // The relation is onDelete: 'SET NULL', so Sequelize will handle this automatically if we delete it!
-    // But setting it to NULL is fine. Let's just allow deletion since Sequelize will nullify the categoryId/collectionId.
-  }
 
   await collection.destroy();
 
-  return res
-    .status(200)
-    .json(new ApiResponse(200, {}, "Collection deleted successfully"));
+  const message =
+    productCount > 0
+      ? `Collection deleted. ${productCount} product${productCount === 1 ? " was" : "s were"} removed from it.`
+      : "Collection deleted successfully";
+
+  return res.status(200).json(new ApiResponse(200, { unlinkedProducts: productCount }, message));
 });
 
 export {

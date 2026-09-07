@@ -143,12 +143,17 @@ const getProducts = asyncHandler(async (req, res) => {
   );
 });
 
+// Matches a v4-style UUID (the shape of every Product primary key).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const getProductBySlug = asyncHandler(async (req, res) => {
   const { slug } = req.params;
 
-  const isNumericId = !isNaN(slug) && !isNaN(parseInt(slug));
-  const queryCondition = isNumericId
-    ? { id: parseInt(slug), status: "PUBLISHED" }
+  // Accept either a slug or the product's UUID id. Product ids are UUIDs, so a
+  // plain numeric check never matched one — and it made a numeric slug
+  // unreachable. Anything that isn't a UUID is treated as a slug.
+  const queryCondition = UUID_RE.test(slug)
+    ? { id: slug, status: "PUBLISHED" }
     : { slug, status: "PUBLISHED" };
 
   const product = await Product.findOne({

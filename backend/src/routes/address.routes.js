@@ -2,7 +2,7 @@ import { Router } from "express";
 import { getAddresses, createAddress, updateAddress, deleteAddress } from "../controllers/address.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { validateBody } from "../middlewares/validate.middleware.js";
-import { addressSchema } from "../validators/catalog.validators.js";
+import { addressSchema, addressUpdateSchema } from "../validators/catalog.validators.js";
 
 const router = Router();
 
@@ -14,7 +14,7 @@ router.route("/")
   .post(validateBody(addressSchema), createAddress);
 
 router.route("/:id")
-  .put(updateAddress)
+  .put(validateBody(addressUpdateSchema), updateAddress)
   .delete(deleteAddress);
 
 export default router;

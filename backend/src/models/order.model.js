@@ -16,6 +16,14 @@ const Order = sequelize.define(
             field: "user_id",
         },
 
+        // Set for guest (not-logged-in) checkouts so the order can still be
+        // identified, confirmed and contacted. Null for account orders.
+        guestEmail: {
+            type: DataTypes.STRING(150),
+            allowNull: true,
+            field: "guest_email",
+        },
+
         orderNumber: {
             type: DataTypes.STRING(50),
             allowNull: false,

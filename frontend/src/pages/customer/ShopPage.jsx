@@ -112,8 +112,8 @@ function ShopPage() {
           isSale: Boolean(p.originalPrice && Number(p.originalPrice) > Number(p.basePrice)),
           image: Array.isArray(p.images) ? p.images[0] : p.images,
           images: Array.isArray(p.images) ? p.images : [p.images],
-          category: p.Category?.name ?? p.category ?? "",
-          collection: p.Collection?.name ?? p.collection ?? "",
+          category: p.category?.name ?? p.Category?.name ?? (typeof p.category === "string" ? p.category : ""),
+          collection: p.collection?.name ?? p.Collection?.name ?? (typeof p.collection === "string" ? p.collection : ""),
           material: p.material,
           // Derive unique colors & sizes from variants
           colors: Array.isArray(p.ProductVariants)

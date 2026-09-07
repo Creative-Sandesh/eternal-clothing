@@ -3,7 +3,7 @@ import { useMoney } from "../../context/SettingsContext";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiPlus, FiSearch, FiGrid, FiList, FiEdit2, FiTrash2, FiStar, FiChevronLeft, FiChevronRight } from "react-icons/fi";
-import { productApi } from "../../services/api";
+import { productApi, normalizeProduct } from "../../services/api";
 const categories = ["All", "Tops", "Bottoms", "Outerwear", "Knitwear", "Footwear", "Accessories"];
 const collections = ["All", "Essentials", "Heritage", "Archive", "Limited"];
 const statuses = ["All", "In Stock", "Low Stock", "Out of Stock"];
@@ -32,7 +32,9 @@ function ProductsListPage() {
       try {
         const res = await productApi.getProducts({ limit: 100 });
         if (!active) return;
-        setProducts(res.data?.products ?? []);
+        // The list endpoint returns category/collection as objects and no flat
+        // price/image/stock fields — normalise to the shape this table renders.
+        setProducts((res.data?.products ?? []).map(normalizeProduct).filter(Boolean));
         setLoading(false);
       } catch (err) {
         console.error("Failed to load products", err);
@@ -218,6 +220,7 @@ function ProductsListPage() {
                           <FiEdit2 size={14} />
                         </button>
                         <button
+    onClick={() => handleDeleteProduct(product.id)}
     className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
     title="Delete"
   >
@@ -284,7 +287,10 @@ function ProductsListPage() {
   >
                     <FiEdit2 size={14} />
                   </button>
-                  <button className="p-2 bg-white rounded-lg text-gray-700 hover:bg-red-500 hover:text-white transition-colors">
+                  <button
+    onClick={() => handleDeleteProduct(product.id)}
+    className="p-2 bg-white rounded-lg text-gray-700 hover:bg-red-500 hover:text-white transition-colors"
+  >
                     <FiTrash2 size={14} />
                   </button>
                 </div>
