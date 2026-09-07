@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
+import { useMoney } from "../../context/SettingsContext";
 import { motion } from "framer-motion";
 import { FiHeart } from "react-icons/fi";
 import { productApi, normalizeProduct } from "../../services/api";
 import { useState, useEffect } from "react";
 function SalePage() {
+  const money = useMoney();
   const [saleProducts, setSaleProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -103,8 +105,8 @@ function SalePage() {
                   <p className="text-[#8c8277] text-[10px] tracking-widest uppercase mb-1">{product.category}</p>
                   <h3 className="text-[#0a0a0a] text-sm font-medium leading-snug mb-1 hover:text-[#2d4a3e] transition-colors">{product.name}</h3>
                   <div className="flex items-center gap-2">
-                    <p className="text-red-600 text-sm font-medium">£{product.price}</p>
-                    {product.originalPrice && <p className="text-[#8c8277] text-sm line-through">£{product.originalPrice}</p>}
+                    <p className="text-red-600 text-sm font-medium">{money(product.price)}</p>
+                    {product.originalPrice && <p className="text-[#8c8277] text-sm line-through">{money(product.originalPrice)}</p>}
                   </div>
                 </Link>
               </motion.div>;

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { RiHeartLine, RiHeartFill, RiShoppingBagLine } from "react-icons/ri";
 import { useWishlist } from "../../context/WishlistContext";
 import { useCart } from "../../context/CartContext";
+import { useMoney } from "../../context/SettingsContext";
 import Badge from "./Badge";
 import Rating from "./Rating";
 function ProductCard({ product, viewMode = "grid" }) {
@@ -11,6 +12,7 @@ function ProductCard({ product, viewMode = "grid" }) {
   const [addedToCart, setAddedToCart] = useState(false);
   const { isWishlisted, toggle } = useWishlist();
   const { addItem } = useCart();
+  const money = useMoney();
   const wishlisted = isWishlisted(product.id);
   const hasSecondImage = product.images.length > 1;
   const handleWishlist = (e) => {
@@ -79,10 +81,10 @@ function ProductCard({ product, viewMode = "grid" }) {
           <div className="flex items-center justify-between mt-4">
             <div className="flex items-baseline gap-2">
               <span className="font-sans font-semibold text-[#0a0a0a]">
-                ${product.price.toFixed(2)}
+                {money(product.price)}
               </span>
               {product.originalPrice && <span className="font-sans text-sm text-[#8c8277] line-through">
-                  ${product.originalPrice.toFixed(2)}
+                  {money(product.originalPrice)}
                 </span>}
             </div>
             <div className="flex items-center gap-2">
@@ -204,10 +206,10 @@ function ProductCard({ product, viewMode = "grid" }) {
         <Rating value={product.rating} count={product.reviewCount} size="sm" />
         <div className="flex items-baseline gap-2 mt-0.5">
           <span className="font-sans text-sm font-semibold text-[#0a0a0a]">
-            ${product.price.toFixed(2)}
+            {money(product.price)}
           </span>
           {product.originalPrice && <span className="font-sans text-xs text-[#8c8277] line-through">
-              ${product.originalPrice.toFixed(2)}
+              {money(product.originalPrice)}
             </span>}
         </div>
       </div>

@@ -1,85 +1,106 @@
-import { Link, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
+import { useMoney } from "../../context/SettingsContext";
 import { motion } from "framer-motion";
-import { FiCheck, FiPackage, FiArrowRight } from "react-icons/fi";
-const orderItems = [
-  {
-    name: "Oversized Cotton Poplin Shirt",
-    size: "M",
-    color: "Chalk White",
-    price: 185,
-    qty: 1,
-    image: "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=200&h=267&fit=crop&auto=format"
-  },
-  {
-    name: "Relaxed Wool Trouser",
-    size: "32",
-    color: "Camel",
-    price: 295,
-    qty: 1,
-    image: "https://images.unsplash.com/photo-1624378439575-d8705ad7ae80?w=200&h=267&fit=crop&auto=format"
-  }
-];
+import { FiCheck, FiPackage, FiArrowRight, FiLoader, FiAlertCircle } from "react-icons/fi";
+import { orderApi } from "../../services/api";
+
 function OrderConfirmationPage() {
+  const money = useMoney();
   const location = useLocation();
-  const orderId = location.state?.orderId;
-  const deliveryDate = /* @__PURE__ */ new Date();
+  const [params] = useSearchParams();
+
+  // Order id / provider come from checkout navigation state, or the gateway redirect query.
+  const orderId = location.state?.orderId || params.get("orderId");
+  const provider = location.state?.provider || params.get("provider");
+  const needsVerify = location.state?.verify || (provider && !location.state);
+
+  const [order, setOrder] = useState(null);
+  const [phase, setPhase] = useState(needsVerify ? "verifying" : "loading"); // verifying | loading | done | error
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    if (!orderId) { setPhase("done"); return; }
+    let active = true;
+
+    const finish = (data) => { if (active) { setOrder(data); setPhase("done"); } };
+
+    const run = async () => {
+      try {
+        if (needsVerify && provider) {
+          const ref = params.get("data") || params.get("pidx") || params.get("refId") || "sandbox";
+          const res = await orderApi.verifyPayment({ orderId, provider: provider.toUpperCase(), ref });
+          finish(res.data);
+          return;
+        }
+        const res = await orderApi.getMyOrderById(orderId);
+        finish(res.data);
+      } catch (err) {
+        if (!active) return;
+        setPhase("error");
+        setMessage(err.message || "We couldn't confirm your payment.");
+      }
+    };
+    run();
+    return () => { active = false; };
+  }, [orderId, provider, needsVerify]);
+
+  const deliveryDate = new Date();
   deliveryDate.setDate(deliveryDate.getDate() + 5);
-  const formattedDelivery = deliveryDate.toLocaleDateString("en-GB", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric"
+  const formattedDelivery = deliveryDate.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+
+  const items = (order?.items || []).map((i) => {
+    const v = i.productVariant || {};
+    const p = v.product || {};
+    return {
+      name: p.name || "Item",
+      size: v.size, color: v.colorName,
+      qty: i.quantity,
+      price: Number(i.unitPrice || 0),
+      image: Array.isArray(p.images) ? p.images[0] : "",
+    };
   });
+
+  if (phase === "verifying") {
+    return <div className="bg-[#fafafa] min-h-screen flex flex-col items-center justify-center gap-4">
+        <FiLoader className="w-8 h-8 animate-spin text-[#2d4a3e]" />
+        <p className="text-sm text-[#8c8277]">Confirming your payment…</p>
+      </div>;
+  }
+
+  if (phase === "error") {
+    return <div className="bg-[#fafafa] min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <FiAlertCircle className="w-10 h-10 text-red-500" />
+        <h1 className="font-display text-3xl text-[#0a0a0a]">Payment not confirmed</h1>
+        <p className="text-sm text-[#8c8277] max-w-sm">{message}</p>
+        <Link to="/account/orders" className="mt-2 px-6 py-3 bg-[#0a0a0a] text-white text-xs tracking-widest uppercase">View my orders</Link>
+      </div>;
+  }
+
   return <div className="bg-[#fafafa] min-h-screen pt-20">
       <div className="max-w-2xl mx-auto px-6 py-16">
-        {
-    /* Checkmark */
-  }
         <div className="flex justify-center mb-8">
-          <motion.div
-    initial={{ scale: 0, opacity: 0 }}
-    animate={{ scale: 1, opacity: 1 }}
-    transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
-    className="w-20 h-20 rounded-full bg-[#2d4a3e] flex items-center justify-center"
-  >
-            <motion.div
-    initial={{ scale: 0 }}
-    animate={{ scale: 1 }}
-    transition={{ delay: 0.4, type: "spring", stiffness: 300 }}
-  >
+          <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }} className="w-20 h-20 rounded-full bg-[#2d4a3e] flex items-center justify-center">
+            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ delay: 0.4, type: "spring", stiffness: 300 }}>
               <FiCheck className="w-9 h-9 text-white stroke-[2.5]" />
             </motion.div>
           </motion.div>
         </div>
 
-        {
-    /* Heading */
-  }
-        <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.5, delay: 0.3 }}
-    className="text-center mb-10"
-  >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }} className="text-center mb-10">
           <h1 className="font-display text-5xl text-[#0a0a0a] mb-3">Order Confirmed</h1>
-          <p className="text-[#8c8277] text-base">Thank you for your order. We're preparing it now.</p>
+          <p className="text-[#8c8277] text-base">
+            {order?.payments?.[0]?.status === "PENDING"
+              ? "Thanks for your order — payment on delivery."
+              : "Thank you for your order. We're preparing it now."}
+          </p>
         </motion.div>
 
-        {
-    /* Order Details Card */
-  }
-        <motion.div
-    initial={{ opacity: 0, y: 20 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.5, delay: 0.45 }}
-    className="bg-white border border-[#0a0a0a]/8 p-8 mb-6"
-  >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.45 }} className="bg-white border border-[#0a0a0a]/8 p-8 mb-6">
           <div className="flex items-center justify-between mb-6 pb-6 border-b border-[#f0ebe2]">
             <div>
               <p className="text-[#8c8277] text-xs tracking-widest uppercase mb-1">Order Number</p>
-              <p className="font-display text-2xl text-[#0a0a0a]">
-                {orderId ? `#${orderId}` : "ET-2024-00422"}
-              </p>
+              <p className="font-display text-2xl text-[#0a0a0a]">{order?.orderNumber || (orderId ? `#${String(orderId).slice(0, 8)}` : "—")}</p>
             </div>
             <div className="text-right">
               <p className="text-[#8c8277] text-xs tracking-widest uppercase mb-1">Estimated Delivery</p>
@@ -87,61 +108,33 @@ function OrderConfirmationPage() {
             </div>
           </div>
 
-          <p className="text-[#8c8277] text-sm mb-4 flex items-center gap-2">
-            <FiPackage className="w-4 h-4" />
-            We'll send a confirmation email to <span className="text-[#0a0a0a]">guest@example.com</span>
-          </p>
-
-          {
-    /* Order Items */
-  }
-          <div className="space-y-4 mb-6 pt-2">
-            {orderItems.map((item, i) => <div key={i} className="flex gap-4">
-                <img src={item.image} alt={item.name} className="w-16 h-20 object-cover bg-[#f0ebe2] flex-shrink-0" />
+          {items.length > 0 && <div className="space-y-4 mb-6 pt-2">
+            {items.map((item, i) => <div key={i} className="flex gap-4">
+                {item.image && <img src={item.image} alt={item.name} className="w-16 h-20 object-cover bg-[#f0ebe2] flex-shrink-0" />}
                 <div className="flex-1 min-w-0">
                   <h4 className="text-[#0a0a0a] text-sm font-medium mb-1">{item.name}</h4>
-                  <p className="text-[#8c8277] text-xs">Size: {item.size} · {item.color}</p>
+                  <p className="text-[#8c8277] text-xs">{[item.size, item.color].filter(Boolean).join(" · ")}</p>
                   <p className="text-[#8c8277] text-xs">Qty: {item.qty}</p>
                 </div>
-                <p className="text-[#0a0a0a] text-sm font-medium">£{item.price}</p>
+                <p className="text-[#0a0a0a] text-sm font-medium">{money((item.price * item.qty))}</p>
               </div>)}
-          </div>
+          </div>}
 
-          <div className="border-t border-[#f0ebe2] pt-4 space-y-1.5">
-            <div className="flex justify-between text-sm text-[#8c8277]">
-              <span>Subtotal</span><span>£{orderItems.reduce((s, i) => s + i.price, 0)}</span>
-            </div>
-            <div className="flex justify-between text-sm text-[#8c8277]">
-              <span>Shipping</span><span>Free</span>
-            </div>
-            <div className="flex justify-between text-base font-medium text-[#0a0a0a] pt-1">
-              <span>Total</span><span>£{orderItems.reduce((s, i) => s + i.price, 0)}</span>
-            </div>
-          </div>
+          {order && <div className="border-t border-[#f0ebe2] pt-4 space-y-1.5">
+            <div className="flex justify-between text-sm text-[#8c8277]"><span>Subtotal</span><span>{money(Number(order.subtotalAmount || 0))}</span></div>
+            {Number(order.discountAmount) > 0 && <div className="flex justify-between text-sm text-[#2d4a3e]"><span>Discount</span><span>−{money(Number(order.discountAmount))}</span></div>}
+            <div className="flex justify-between text-sm text-[#8c8277]"><span>Shipping</span><span>{Number(order.shippingFee) === 0 ? "Free" : money(Number(order.shippingFee))}</span></div>
+            {Number(order.taxAmount) > 0 && <div className="flex justify-between text-sm text-[#8c8277]"><span>Tax</span><span>{money(Number(order.taxAmount))}</span></div>}
+            <div className="flex justify-between text-base font-medium text-[#0a0a0a] pt-1"><span>Total</span><span>{money(Number(order.totalAmount || 0))}</span></div>
+          </div>}
         </motion.div>
 
-        {
-    /* Actions */
-  }
-        <motion.div
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    transition={{ duration: 0.5, delay: 0.6 }}
-    className="flex flex-col sm:flex-row gap-3"
-  >
-          <Link
-    to="/account/orders"
-    className="flex-1 flex items-center justify-center gap-2 bg-[#2d4a3e] text-white text-xs tracking-[0.15em] uppercase py-4 hover:bg-[#243d32] transition-colors"
-  >
-            <FiPackage className="w-4 h-4" />
-            View My Orders
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5, delay: 0.6 }} className="flex flex-col sm:flex-row gap-3">
+          <Link to="/account/orders" className="flex-1 flex items-center justify-center gap-2 bg-[#2d4a3e] text-white text-xs tracking-[0.15em] uppercase py-4 hover:bg-[#243d32] transition-colors">
+            <FiPackage className="w-4 h-4" /> View My Orders
           </Link>
-          <Link
-    to="/shop"
-    className="flex-1 flex items-center justify-center gap-2 border border-[#0a0a0a] text-[#0a0a0a] text-xs tracking-[0.15em] uppercase py-4 hover:bg-[#f0ebe2] transition-colors"
-  >
-            Continue Shopping
-            <FiArrowRight className="w-4 h-4" />
+          <Link to="/shop" className="flex-1 flex items-center justify-center gap-2 border border-[#0a0a0a] text-[#0a0a0a] text-xs tracking-[0.15em] uppercase py-4 hover:bg-[#f0ebe2] transition-colors">
+            Continue Shopping <FiArrowRight className="w-4 h-4" />
           </Link>
         </motion.div>
       </div>

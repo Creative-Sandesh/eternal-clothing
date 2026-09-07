@@ -1,10 +1,13 @@
 import { useState, useEffect } from "react";
+import { useMoney, useSettings } from "../../context/SettingsContext";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiShoppingBag, FiX, FiPlus, FiMinus, FiArrowLeft, FiTag } from "react-icons/fi";
 import { useCart } from "../../context/CartContext";
 import { productApi, normalizeProduct } from "../../services/api";
 function CartPage() {
+  const money = useMoney();
+  const { settings, freeShippingThreshold, shippingFee } = useSettings();
   const { items, addItem, removeItem, updateQuantity, total, count } = useCart();
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
@@ -37,8 +40,9 @@ function CartPage() {
       setPromoError(true);
     }
   };
-  const shipping = total >= 200 ? 0 : 8;
-  const tax = total * 0.2;
+  const qualifiesFreeShipping = freeShippingThreshold > 0 && total >= freeShippingThreshold;
+  const shipping = total === 0 || qualifiesFreeShipping ? 0 : shippingFee;
+  const tax = total * ((Number(settings.tax_rate_percent) || 0) / 100);
   const grandTotal = total + shipping + tax;
   if (items.length === 0) {
     return <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center gap-6 px-4">
@@ -145,7 +149,7 @@ function CartPage() {
                       </td>
                       <td className="py-6 pl-4 text-right">
                         <span className="text-sm text-[#0a0a0a]">
-                          £{(item.price * item.quantity).toFixed(2)}
+                          {money((item.price * item.quantity))}
                         </span>
                       </td>
                       <td className="py-6 pl-4">
@@ -191,7 +195,7 @@ function CartPage() {
                         {item.name}
                       </Link>
                       <p className="text-xs text-[#8c8277] mt-1">{item.color} · Size {item.size}</p>
-                      <p className="text-sm text-[#0a0a0a] mt-1">£{(item.price * item.quantity).toFixed(2)}</p>
+                      <p className="text-sm text-[#0a0a0a] mt-1">{money((item.price * item.quantity))}</p>
                     </div>
                     <div className="flex items-center justify-between mt-2">
                       <div className="flex items-center gap-2">
@@ -238,24 +242,28 @@ function CartPage() {
             <div className="space-y-3 mb-4">
               <div className="flex justify-between text-sm">
                 <span className="text-[#8c8277]">Subtotal</span>
-                <span className="text-[#0a0a0a]">£{total.toFixed(2)}</span>
+                <span className="text-[#0a0a0a]">{money(total)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-[#8c8277]">Shipping</span>
-                <span className="text-[#0a0a0a]">{shipping === 0 ? "Free" : "\xA38.00"}</span>
+                <span className="text-[#0a0a0a]">{shipping === 0 ? "Free" : money(shipping)}</span>
               </div>
-              {total < 200 && <p className="text-xs text-[#8c8277]">Free shipping on orders over £200</p>}
-              <div className="flex justify-between text-sm">
-                <span className="text-[#8c8277]">Estimated Tax (20% VAT)</span>
-                <span className="text-[#0a0a0a]">£{tax.toFixed(2)}</span>
-              </div>
+              {freeShippingThreshold > 0 && !qualifiesFreeShipping && total > 0 && (
+                <p className="text-xs text-[#8c8277]">Free shipping on orders over {money(freeShippingThreshold)}</p>
+              )}
+              {tax > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-[#8c8277]">Estimated Tax</span>
+                  <span className="text-[#0a0a0a]">{money(tax)}</span>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-[#c9b99a] my-4" />
 
             <div className="flex justify-between items-baseline mb-6">
               <span className="font-display text-xl text-[#0a0a0a]">Total</span>
-              <span className="font-display text-xl text-[#0a0a0a]">£{grandTotal.toFixed(2)}</span>
+              <span className="font-display text-xl text-[#0a0a0a]">{money(grandTotal)}</span>
             </div>
 
             {
@@ -339,7 +347,7 @@ function CartPage() {
   />
                 </div>
                 <p className="font-display text-sm text-[#0a0a0a] leading-snug">{product.name}</p>
-                <p className="text-[#8c8277] text-sm mt-0.5">£{product.price.toFixed(2)}</p>
+                <p className="text-[#8c8277] text-sm mt-0.5">{money(product.price)}</p>
               </Link>)}
           </div>
         </div>

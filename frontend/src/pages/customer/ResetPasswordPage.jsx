@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiEye, FiEyeOff, FiCheckCircle } from "react-icons/fi";
+import { authApi } from "../../services/api";
 function getStrength(password) {
   if (!password) return { label: "", level: 0, color: "#f0ebe2" };
   let score = 0;
@@ -18,11 +19,15 @@ function getStrength(password) {
   return { label: map[score - 1]?.label ?? "Weak", level: score, color: map[score - 1]?.color ?? "#ef4444" };
 }
 function ResetPasswordPage() {
+  const [params] = useSearchParams();
+  const token = params.get("token") || "";
   const [newPass, setNewPass] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
   const [countdown, setCountdown] = useState(3);
   const strength = getStrength(newPass);
   useEffect(() => {
@@ -34,10 +39,23 @@ function ResetPasswordPage() {
     const timer = setTimeout(() => setCountdown((c) => c - 1), 1e3);
     return () => clearTimeout(timer);
   }, [success, countdown]);
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!newPass || newPass !== confirm) return;
-    setSuccess(true);
+    if (!token) {
+      setError("This reset link is missing its token. Request a new link.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      await authApi.resetPassword(token, newPass);
+      setSuccess(true);
+    } catch (err) {
+      setError(err.message || "Reset link is invalid or has expired.");
+    } finally {
+      setSubmitting(false);
+    }
   }
   return <div
     className="min-h-screen flex items-center justify-center px-4 py-16"
@@ -102,6 +120,8 @@ function ResetPasswordPage() {
                 <h1 className="font-display text-2xl mb-1" style={{ color: "#0a0a0a" }}>Create new password</h1>
                 <p className="text-sm" style={{ color: "#8c8277" }}>Choose a strong password for your account.</p>
               </div>
+
+              {error && <p className="text-xs -mt-2" style={{ color: "#ef4444" }}>{error}</p>}
 
               {
     /* New password */
@@ -177,9 +197,9 @@ function ResetPasswordPage() {
     type="submit"
     className="w-full py-3.5 text-xs tracking-widest uppercase transition-colors hover:bg-[#2d4a3e] disabled:opacity-40 disabled:cursor-not-allowed"
     style={{ backgroundColor: "#0a0a0a", color: "#fafafa" }}
-    disabled={!newPass || newPass !== confirm || strength.level < 2}
+    disabled={submitting || !newPass || newPass !== confirm || strength.level < 2}
   >
-                Reset Password
+                {submitting ? "Resetting…" : "Reset Password"}
               </button>
 
               <p className="text-center text-xs" style={{ color: "#8c8277" }}>

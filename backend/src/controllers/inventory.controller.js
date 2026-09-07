@@ -1,3 +1,4 @@
+import { Op } from "sequelize";
 import ProductVariant from "../models/productVariant.model.js";
 import Product from "../models/product.model.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -12,6 +13,23 @@ const getInventory = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, inventory, "Inventory details fetched successfully"));
+});
+
+// Variants at or below a stock threshold (default 10), lowest first.
+const getLowStock = asyncHandler(async (req, res) => {
+  const threshold = Math.max(0, parseInt(req.query.threshold, 10) || 10);
+  const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 20));
+
+  const variants = await ProductVariant.findAll({
+    where: { stockQuantity: { [Op.lt]: threshold } },
+    include: [{ model: Product, as: "product", attributes: ["id", "name", "slug"], required: true }],
+    order: [["stockQuantity", "ASC"]],
+    limit
+  });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, { threshold, items: variants }, "Low-stock variants fetched successfully"));
 });
 
 const updateVariantStock = asyncHandler(async (req, res) => {
@@ -41,4 +59,4 @@ const updateVariantStock = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, variant, "Inventory variant stock updated successfully"));
 });
 
-export { getInventory, updateVariantStock };
+export { getInventory, getLowStock, updateVariantStock };

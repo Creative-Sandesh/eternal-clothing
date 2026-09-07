@@ -1,11 +1,21 @@
 import { Router } from "express";
-import { getCurrentProfile, updateCurrentProfile, changePassword, getCustomers, getCustomerById } from "../controllers/user.controller.js";
+import {
+  getCurrentProfile,
+  updateCurrentProfile,
+  changePassword,
+  getCustomers,
+  getCustomerById,
+  getStaffUsers,
+  createStaffUser,
+  updateStaffUser,
+  deleteStaffUser
+} from "../controllers/user.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { verifyAdmin } from "../middlewares/admin.middleware.js";
 
 const router = Router();
 
-// Customer profile routes (Secured)
+// All user routes require authentication
 router.use(verifyJWT);
 
 router.route("/me")
@@ -14,8 +24,17 @@ router.route("/me")
 
 router.route("/change-password").put(changePassword);
 
-// Admin-only customer views
+// Admin-only: customers
 router.route("/admin/customers").get(verifyAdmin, getCustomers);
 router.route("/admin/customers/:id").get(verifyAdmin, getCustomerById);
+
+// Admin-only: staff / team management
+router.route("/admin/users")
+  .get(verifyAdmin, getStaffUsers)
+  .post(verifyAdmin, createStaffUser);
+
+router.route("/admin/users/:id")
+  .put(verifyAdmin, updateStaffUser)
+  .delete(verifyAdmin, deleteStaffUser);
 
 export default router;

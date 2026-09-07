@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useMoney } from "../../context/SettingsContext";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiPackage, FiHeart, FiMapPin, FiCreditCard, FiExternalLink, FiTruck, FiStar, FiLoader } from "react-icons/fi";
@@ -23,6 +24,7 @@ const quickLinks = [
 ];
 
 function AccountDashboard() {
+  const money = useMoney();
   const { user } = useAuth();
   const { count: wishlistCount } = useWishlist();
   const [orders, setOrders]     = useState([]);
@@ -41,7 +43,7 @@ function AccountDashboard() {
 
   const stats = [
     { label: "Total Orders",   value: loading ? "—" : String(orders.length), icon: <FiPackage size={20} />,  color: "#2d4a3e" },
-    { label: "Total Spent",    value: loading ? "—" : `£${totalSpent.toFixed(0)}`, icon: <FiCreditCard size={20} />, color: "#0a0a0a" },
+    { label: "Total Spent",    value: loading ? "—" : money(totalSpent), icon: <FiCreditCard size={20} />, color: "#0a0a0a" },
     { label: "Loyalty Points", value: loading ? "—" : String(orders.length * 100), icon: <FiStar size={20} />,    color: "#c9b99a" },
     { label: "Wishlist Items", value: String(wishlistCount), icon: <FiHeart size={20} />,    color: "#8c8277" }
   ];
@@ -167,7 +169,7 @@ function AccountDashboard() {
                 </div>
                 <div className="flex items-center justify-between md:justify-end gap-4 col-span-2 md:col-span-1">
                   <span className="text-sm font-semibold" style={{ color: "#0a0a0a", fontFamily: "Manrope, sans-serif" }}>
-                    £{Number(order.totalAmount || 0).toFixed(2)}
+                    {money(Number(order.totalAmount || 0))}
                   </span>
                   <Link
                     to={`/account/orders/${order.id}`}

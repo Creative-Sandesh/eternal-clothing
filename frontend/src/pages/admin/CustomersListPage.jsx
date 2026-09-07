@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useMoney } from "../../context/SettingsContext";
+import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiSearch, FiDownload, FiEye, FiUsers, FiStar, FiTrendingUp, FiUserPlus } from "react-icons/fi";
 import { userApi } from "../../services/api";
@@ -13,6 +15,7 @@ const tierColors = {
 const tiers = ["All", "Platinum", "Gold", "Silver", "Bronze"];
 
 function CustomersListPage() {
+  const money = useMoney();
   const [search, setSearch] = useState("");
   const [tier, setTier] = useState("All");
   const [customers, setCustomers] = useState([]);
@@ -49,7 +52,7 @@ function CustomersListPage() {
     { label: "Total Customers", value: customers.length, icon: <FiUsers size={18} /> },
     { label: "New This Month", value: customers.filter(c => new Date(c.joinedAt) > new Date(Date.now() - 30 * 86400000)).length, icon: <FiUserPlus size={18} /> },
     { label: "VIP Customers", value: customers.filter((c) => c.tier === "Platinum").length, icon: <FiStar size={18} /> },
-    { label: "Avg Lifetime Value", value: "£" + (customers.length ? Math.round(customers.reduce((a, c) => a + c.totalSpent, 0) / customers.length).toLocaleString() : 0), icon: <FiTrendingUp size={18} /> }
+    { label: "Avg Lifetime Value", value: money(customers.length ? customers.reduce((a, c) => a + c.totalSpent, 0) / customers.length : 0), icon: <FiTrendingUp size={18} /> }
   ];
   const filtered = customers.filter((c) => {
     const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.email.toLowerCase().includes(search.toLowerCase());
@@ -165,14 +168,14 @@ function CustomersListPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-600 hidden md:table-cell">{customer.totalOrders}</td>
-                  <td className="px-4 py-3 font-semibold text-gray-900">£{customer.totalSpent.toLocaleString()}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-900">{money(customer.totalSpent.toLocaleString())}</td>
                   <td className="px-4 py-3 text-xs text-gray-500 hidden lg:table-cell">
                     {new Date(customer.joinedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
                   </td>
                   <td className="px-4 py-3">
-                    <button className="p-1.5 text-gray-400 hover:text-[#2d4a3e] hover:bg-green-50 rounded-lg transition-colors" title="View">
+                    <Link to={`/admin/customers/${customer.id}`} className="inline-flex p-1.5 text-gray-400 hover:text-[#2d4a3e] hover:bg-green-50 rounded-lg transition-colors" title="View">
                       <FiEye size={14} />
-                    </button>
+                    </Link>
                   </td>
                 </tr>)}
             </tbody>

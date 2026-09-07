@@ -1,184 +1,102 @@
-import { useState } from "react";
-import { FiCopy, FiCheck, FiMessageCircle, FiMail, FiTwitter } from "react-icons/fi";
-const referralLink = "https://eternal.com/ref/MARCUS-2024";
-const stats = [
-  { label: "Referrals Sent", value: "5" },
-  { label: "Signed Up", value: "3" },
-  { label: "Orders Made", value: "2" },
-  { label: "Earned", value: "\xA340" }
-];
-const steps = [
-  { n: "01", title: "Share your link", desc: "Send your unique referral link to friends and family who love fashion." },
-  { n: "02", title: "They sign up", desc: "Your friend creates an Eternal account using your link and makes their first order." },
-  { n: "03", title: "You both earn", desc: "You receive \xA320 credit and your friend gets \xA320 off their first order. Everyone wins." }
-];
-const history = [
-  { email: "s.morris@email.com", date: "12 Jan 2024", status: "Purchased", reward: "\xA320" },
-  { email: "j.chen@email.com", date: "28 Nov 2023", status: "Purchased", reward: "\xA320" },
-  { email: "l.baker@email.com", date: "14 Oct 2023", status: "Signed Up", reward: "\u2014" },
-  { email: "r.hayes@email.com", date: "2 Sep 2023", status: "Pending", reward: "\u2014" },
-  { email: "n.walsh@email.com", date: "30 Aug 2023", status: "Pending", reward: "\u2014" }
-];
-const statusColors = {
-  Purchased: { bg: "#2d4a3e", text: "#fafafa" },
-  "Signed Up": { bg: "#c9b99a", text: "#fafafa" },
-  Pending: { bg: "#f0ebe2", text: "#8c8277" }
-};
+import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
+import { FiUsers, FiCopy, FiCheck, FiGift, FiClock } from "react-icons/fi";
+import { referralApi } from "../../services/api";
+
 function ReferralPage() {
-  const [copied, setCopied] = useState(false);
-  function copyLink() {
-    navigator.clipboard.writeText(referralLink).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2e3);
-    });
-  }
-  function shareVia(type) {
-    const msg = encodeURIComponent(`Get \xA320 off your first Eternal order with my referral link: ${referralLink}`);
-    if (type === "whatsapp") window.open(`https://wa.me/?text=${msg}`, "_blank");
-    if (type === "email") window.open(`mailto:?subject=You%27ve%20been%20invited%20to%20Eternal&body=${msg}`, "_blank");
-    if (type === "twitter") window.open(`https://twitter.com/intent/tweet?text=${msg}`, "_blank");
-  }
-  return <div style={{ fontFamily: "Manrope, sans-serif" }}>
-      {
-    /* Hero banner */
-  }
-      <div
-    className="p-8 sm:p-12 mb-8 text-center"
-    style={{ backgroundColor: "#0a0a0a" }}
-  >
-        <p className="text-xs tracking-widest uppercase mb-3" style={{ color: "#c9b99a" }}>Referral Programme</p>
-        <h1 className="font-display text-4xl sm:text-5xl mb-4" style={{ color: "#fafafa" }}>Give £20, Get £20</h1>
-        <p className="text-sm leading-relaxed max-w-md mx-auto" style={{ color: "#8c8277" }}>
-          Invite a friend to Eternal. When they make their first purchase, they get £20 off and you earn £20 credit — automatically.
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    referralApi.getMine()
+      .then((res) => { if (active) setData(res.data); })
+      .catch((err) => console.error("Failed to load referrals", err))
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  const copy = (text, key) => {
+    navigator.clipboard?.writeText(text).catch(() => {});
+    setCopied(key);
+    setTimeout(() => setCopied(null), 1800);
+  };
+
+  if (loading) return <div className="py-24 text-center" style={{ color: "#8c8277" }}>Loading…</div>;
+  if (!data) return <div className="py-24 text-center" style={{ color: "#8c8277" }}>Referral information is unavailable.</div>;
+
+  const { code, link, rewardPoints, stats, referrals } = data;
+
+  return <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="space-y-10">
+      <div>
+        <p className="text-xs uppercase tracking-widest mb-1" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>My Account</p>
+        <h1 className="font-display text-4xl" style={{ color: "#0a0a0a" }}>Referral Programme</h1>
+      </div>
+
+      {/* Hero */}
+      <div className="border p-8" style={{ borderColor: "#f0ebe2", backgroundColor: "#f0ebe2" }}>
+        <div className="flex items-center gap-2 mb-3">
+          <FiGift size={18} style={{ color: "#2d4a3e" }} />
+          <h2 className="font-display text-2xl" style={{ color: "#0a0a0a" }}>Give {rewardPoints}, get {rewardPoints}</h2>
+        </div>
+        <p className="text-sm mb-6" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>
+          Share your link. When a friend places their first order, you both earn {rewardPoints} loyalty points.
         </p>
-      </div>
 
-      {
-    /* Stats */
-  }
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-        {stats.map((s) => <div key={s.label} className="p-4 border text-center" style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa" }}>
-            <p className="font-display text-2xl mb-1" style={{ color: "#0a0a0a" }}>{s.value}</p>
-            <p className="text-[10px] uppercase tracking-widest" style={{ color: "#8c8277" }}>{s.label}</p>
-          </div>)}
-      </div>
-
-      {
-    /* Referral link card */
-  }
-      <div className="p-6 border mb-8" style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa" }}>
-        <p className="text-xs uppercase tracking-widest mb-3" style={{ color: "#8c8277" }}>Your Referral Link</p>
-        <div className="flex gap-2">
-          <div
-    className="flex-1 px-4 py-3 border text-sm truncate"
-    style={{ borderColor: "#f0ebe2", color: "#8c8277", backgroundColor: "#f0ebe2" }}
-  >
-            {referralLink}
-          </div>
-          <button
-    type="button"
-    onClick={copyLink}
-    className="flex items-center gap-2 px-5 py-3 text-xs tracking-widest uppercase transition-colors flex-shrink-0"
-    style={{ backgroundColor: copied ? "#2d4a3e" : "#0a0a0a", color: "#fafafa" }}
-  >
-            {copied ? <><FiCheck size={13} /> Copied!</> : <><FiCopy size={13} /> Copy</>}
+        <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8c8277" }}>Your referral link</label>
+        <div className="flex gap-0 mb-4">
+          <input readOnly value={link} className="flex-1 px-4 py-3 text-sm outline-none border-y border-l" style={{ borderColor: "#8c8277", backgroundColor: "#fafafa", color: "#8c8277", fontFamily: "Manrope, sans-serif" }} />
+          <button type="button" onClick={() => copy(link, "link")} className="px-5 py-3 flex items-center gap-2 text-xs uppercase tracking-widest transition-colors" style={{ backgroundColor: copied === "link" ? "#2d4a3e" : "#0a0a0a", color: "#fafafa", fontFamily: "Manrope, sans-serif" }}>
+            {copied === "link" ? <FiCheck size={14} /> : <FiCopy size={14} />}
+            {copied === "link" ? "Copied" : "Copy"}
           </button>
         </div>
 
-        {
-    /* Share via */
-  }
-        <div className="mt-5">
-          <p className="text-xs uppercase tracking-widest mb-3" style={{ color: "#8c8277" }}>Share via</p>
-          <div className="flex gap-3">
-            <button
-    type="button"
-    onClick={() => shareVia("whatsapp")}
-    className="flex items-center gap-2 px-4 py-2.5 border text-xs tracking-widest uppercase transition-colors hover:bg-[#25D366] hover:text-[#fafafa] hover:border-[#25D366]"
-    style={{ borderColor: "#f0ebe2", color: "#8c8277" }}
-  >
-              <FiMessageCircle size={14} /> WhatsApp
-            </button>
-            <button
-    type="button"
-    onClick={() => shareVia("email")}
-    className="flex items-center gap-2 px-4 py-2.5 border text-xs tracking-widest uppercase transition-colors hover:bg-[#0a0a0a] hover:text-[#fafafa] hover:border-[#0a0a0a]"
-    style={{ borderColor: "#f0ebe2", color: "#8c8277" }}
-  >
-              <FiMail size={14} /> Email
-            </button>
-            <button
-    type="button"
-    onClick={() => shareVia("twitter")}
-    className="flex items-center gap-2 px-4 py-2.5 border text-xs tracking-widest uppercase transition-colors hover:bg-[#1DA1F2] hover:text-[#fafafa] hover:border-[#1DA1F2]"
-    style={{ borderColor: "#f0ebe2", color: "#8c8277" }}
-  >
-              <FiTwitter size={14} /> Twitter
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {
-    /* How it works */
-  }
-      <div className="mb-8">
-        <h2 className="text-xs uppercase tracking-widest mb-5" style={{ color: "#8c8277" }}>How It Works</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {steps.map((step) => <div key={step.n} className="p-5 border" style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa" }}>
-              <p className="font-display text-3xl mb-3" style={{ color: "#f0ebe2" }}>{step.n}</p>
-              <p className="text-sm font-semibold mb-2" style={{ color: "#0a0a0a" }}>{step.title}</p>
-              <p className="text-sm leading-relaxed" style={{ color: "#8c8277" }}>{step.desc}</p>
-            </div>)}
-        </div>
-      </div>
-
-      {
-    /* Referral history */
-  }
-      <div className="mb-8">
-        <h2 className="text-xs uppercase tracking-widest mb-4" style={{ color: "#8c8277" }}>Referral History</h2>
-        <div className="border overflow-hidden" style={{ borderColor: "#f0ebe2" }}>
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ backgroundColor: "#f0ebe2" }}>
-                {["Email Invited", "Date", "Status", "Reward"].map((h) => <th key={h} className="text-left px-4 py-3 text-[10px] uppercase tracking-widest font-semibold" style={{ color: "#8c8277" }}>
-                    {h}
-                  </th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((row, i) => <tr key={row.email} style={{ backgroundColor: i % 2 === 0 ? "#fafafa" : "#f0ebe2" }}>
-                  <td className="px-4 py-3 text-sm" style={{ color: "#0a0a0a" }}>{row.email}</td>
-                  <td className="px-4 py-3 text-sm" style={{ color: "#8c8277" }}>{row.date}</td>
-                  <td className="px-4 py-3">
-                    <span
-    className="text-[10px] px-2 py-1 uppercase tracking-widest font-semibold"
-    style={{ backgroundColor: statusColors[row.status].bg, color: statusColors[row.status].text }}
-  >
-                      {row.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm font-semibold" style={{ color: row.reward !== "\u2014" ? "#2d4a3e" : "#8c8277" }}>
-                    {row.reward}
-                  </td>
-                </tr>)}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {
-    /* Terms */
-  }
-      <div className="p-4 border" style={{ borderColor: "#f0ebe2", backgroundColor: "#f0ebe2" }}>
-        <p className="text-xs leading-relaxed" style={{ color: "#8c8277" }}>
-          <span className="font-semibold" style={{ color: "#0a0a0a" }}>Terms: </span>
-          Credit is awarded once the referred friend completes their first order over £75. Credit expires 12 months from issue.
-          Referral credits cannot be combined with other promotional discounts. Self-referrals are not permitted.
+        <p className="text-xs" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>
+          Or share your code:{" "}
+          <button type="button" onClick={() => copy(code, "code")} className="font-mono font-semibold underline" style={{ color: "#0a0a0a" }}>
+            {code}{copied === "code" ? " ✓" : ""}
+          </button>
         </p>
       </div>
-    </div>;
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "Friends Joined", value: stats.joined },
+          { label: "Completed", value: stats.completed },
+          { label: "Points Earned", value: stats.pointsEarned.toLocaleString() },
+        ].map((s) => <div key={s.label} className="p-5 border text-center" style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa" }}>
+            <p className="font-display text-2xl" style={{ color: "#0a0a0a" }}>{s.value}</p>
+            <p className="text-xs uppercase tracking-widest mt-1" style={{ color: "#8c8277" }}>{s.label}</p>
+          </div>)}
+      </div>
+
+      {/* List */}
+      <div>
+        <h2 className="font-display text-2xl mb-6" style={{ color: "#0a0a0a" }}>Your Referrals</h2>
+        {referrals.length === 0 ? <p className="text-sm py-8 text-center border" style={{ color: "#8c8277", borderColor: "#f0ebe2" }}>
+            No one has signed up with your link yet.
+          </p>
+        : <div className="border" style={{ borderColor: "#f0ebe2" }}>
+            {referrals.map((r) => <div key={r.id} className="flex items-center gap-4 px-5 py-4 border-t first:border-t-0" style={{ borderColor: "#f0ebe2", fontFamily: "Manrope, sans-serif" }}>
+                <div className="w-9 h-9 rounded-full bg-[#f0ebe2] flex items-center justify-center flex-shrink-0" style={{ color: "#2d4a3e" }}>
+                  <FiUsers size={15} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium" style={{ color: "#0a0a0a" }}>{r.name}</p>
+                  <p className="text-xs" style={{ color: "#8c8277" }}>
+                    {r.email || "Joined"} · {new Date(r.joinedAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })}
+                  </p>
+                </div>
+                {r.status === "COMPLETED"
+                  ? <span className="flex items-center gap-1 text-xs px-2.5 py-1" style={{ backgroundColor: "#2d4a3e", color: "#fafafa" }}><FiCheck size={11} /> +{r.rewardPoints}</span>
+                  : <span className="flex items-center gap-1 text-xs px-2.5 py-1" style={{ backgroundColor: "#f0ebe2", color: "#8c8277" }}><FiClock size={11} /> Pending</span>}
+              </div>)}
+          </div>}
+      </div>
+    </motion.div>;
 }
 export {
   ReferralPage as default

@@ -1,284 +1,162 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { FiCreditCard, FiPlus, FiEdit2, FiTrash2, FiCheck, FiLock, FiX } from "react-icons/fi";
-const initialCards = [
-  { id: "c1", brand: "Visa", last4: "4242", expiry: "09/26", name: "Aria Laurent", isDefault: true },
-  { id: "c2", brand: "Mastercard", last4: "8888", expiry: "03/25", name: "Aria Laurent", isDefault: false }
+import { FiPlus, FiTrash2, FiCreditCard, FiCheck, FiX } from "react-icons/fi";
+import { paymentMethodApi } from "../../services/api";
+
+const TYPES = [
+  { value: "CARD", label: "Card" },
+  { value: "ESEWA", label: "eSewa" },
+  { value: "KHALTI", label: "Khalti" },
+  { value: "COD", label: "Cash on Delivery" },
 ];
-const brandColors = {
-  Visa: { bg: "#1a1f71", text: "#fafafa" },
-  Mastercard: { bg: "#eb001b", text: "#fafafa" }
-};
+
+const brandDot = (type) =>
+  ({ CARD: "#1a1a1a", ESEWA: "#60bb46", KHALTI: "#5c2d91", COD: "#8c8277" }[type] || "#8c8277");
+
 function PaymentMethodsPage() {
-  const [cards, setCards] = useState(initialCards);
+  const [methods, setMethods] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [paypalLinked] = useState(true);
-  const [form, setForm] = useState({ number: "", expiry: "", cvv: "", name: "", useBilling: true });
-  const [saved, setSaved] = useState(false);
-  function setDefault(id) {
-    setCards((prev) => prev.map((c) => ({ ...c, isDefault: c.id === id })));
-  }
-  function remove(id) {
-    setCards((prev) => prev.filter((c) => c.id !== id));
-  }
-  function formatCardNumber(val) {
-    const digits = val.replace(/\D/g, "").slice(0, 16);
-    return digits.replace(/(.{4})/g, "$1 ").trim();
-  }
-  function formatExpiry(val) {
-    const digits = val.replace(/\D/g, "").slice(0, 4);
-    if (digits.length >= 3) return digits.slice(0, 2) + "/" + digits.slice(2);
-    return digits;
-  }
-  function handleSave() {
-    setSaved(true);
-    setTimeout(() => {
-      setSaved(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({ type: "CARD", cardNumber: "", expiryMonth: "", expiryYear: "", walletId: "" });
+
+  const load = useCallback(async () => {
+    try {
+      const res = await paymentMethodApi.getAll();
+      setMethods(res.data || []);
+    } catch (err) {
+      console.error("Failed to load payment methods", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const submit = async () => {
+    setError("");
+    if (form.type === "CARD" && form.cardNumber.replace(/\D/g, "").length < 12) {
+      setError("Enter a valid card number");
+      return;
+    }
+    if ((form.type === "ESEWA" || form.type === "KHALTI") && !form.walletId) {
+      setError("Enter your wallet phone or email");
+      return;
+    }
+    setSaving(true);
+    try {
+      await paymentMethodApi.add(form);
       setShowForm(false);
-      setForm({ number: "", expiry: "", cvv: "", name: "", useBilling: true });
-    }, 1500);
-  }
+      setForm({ type: "CARD", cardNumber: "", expiryMonth: "", expiryYear: "", walletId: "" });
+      await load();
+    } catch (err) {
+      setError(err.message || "Could not save payment method");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (id) => {
+    setMethods((prev) => prev.filter((m) => m.id !== id));
+    try { await paymentMethodApi.remove(id); } catch (err) { console.error(err); load(); }
+  };
+  const makeDefault = async (id) => {
+    setMethods((prev) => prev.map((m) => ({ ...m, isDefault: m.id === id })));
+    try { await paymentMethodApi.setDefault(id); } catch (err) { console.error(err); load(); }
+  };
+
   return <div>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-8">
-        <h1 className="font-display text-3xl" style={{ color: "#0a0a0a" }}>Payment Methods</h1>
+        <div>
+          <h1 className="font-display text-3xl mb-1" style={{ color: "#0a0a0a" }}>Payment Methods</h1>
+          <p className="text-sm" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>Saved instruments for faster checkout</p>
+        </div>
         <button
     type="button"
-    onClick={() => setShowForm(true)}
-    className="flex items-center justify-center gap-2 px-5 py-2.5 text-xs tracking-widest uppercase transition-all hover:bg-[#2d4a3e] w-full sm:w-auto"
-    style={{ backgroundColor: "#0a0a0a", color: "#fafafa", fontFamily: "Manrope, sans-serif" }}
+    onClick={() => setShowForm((s) => !s)}
+    className="flex items-center justify-center gap-2 px-4 py-2 text-xs tracking-widest uppercase border transition-all hover:bg-[#0a0a0a] hover:text-[#fafafa]"
+    style={{ borderColor: "#0a0a0a", color: "#0a0a0a", fontFamily: "Manrope, sans-serif" }}
   >
-          <FiPlus size={14} />
-          Add New Card
+          <FiPlus size={13} /> Add method
         </button>
       </div>
 
-      {
-    /* Saved cards */
-  }
-      <div className="mb-8">
-        <h2 className="text-xs tracking-widest uppercase mb-4" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>Saved Cards</h2>
-        <div className="flex flex-col gap-3">
-          {cards.map((card) => <div
-    key={card.id}
-    className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 p-4 border"
-    style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa", fontFamily: "Manrope, sans-serif" }}
+      <AnimatePresence>
+        {showForm && <motion.div
+    initial={{ opacity: 0, height: 0 }}
+    animate={{ opacity: 1, height: "auto" }}
+    exit={{ opacity: 0, height: 0 }}
+    className="mb-8 border p-6 overflow-hidden"
+    style={{ borderColor: "#f0ebe2", backgroundColor: "#f0ebe2" }}
   >
-              {
-    /* Card visual */
-  }
-              <div
-    className="flex-shrink-0 w-14 h-9 rounded flex items-center justify-center text-xs font-bold tracking-wider"
-    style={{ backgroundColor: brandColors[card.brand].bg, color: brandColors[card.brand].text }}
-  >
-                {card.brand === "Visa" ? "VISA" : "MC"}
+            {error && <p className="text-xs mb-3" style={{ color: "#b91c1c" }}>{error}</p>}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="block text-xs tracking-widest uppercase mb-1.5" style={{ color: "#8c8277" }}>Type</label>
+                <select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} className="w-full px-3 py-2.5 text-sm border bg-[#fafafa] outline-none" style={{ borderColor: "#8c8277" }}>
+                  {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
               </div>
 
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <p className="text-sm font-semibold" style={{ color: "#0a0a0a" }}>
-                    •••• •••• •••• {card.last4}
-                  </p>
-                  {card.isDefault && <span
-    className="text-[10px] px-2 py-0.5 uppercase tracking-widest font-semibold"
-    style={{ backgroundColor: "#2d4a3e", color: "#fafafa" }}
-  >
-                      Default
-                    </span>}
+              {form.type === "CARD" && <>
+                <div className="col-span-2">
+                  <label className="block text-xs tracking-widest uppercase mb-1.5" style={{ color: "#8c8277" }}>Card Number</label>
+                  <input value={form.cardNumber} onChange={(e) => setForm({ ...form, cardNumber: e.target.value })} placeholder="4242 4242 4242 4242" className="w-full px-3 py-2.5 text-sm border bg-[#fafafa] outline-none font-mono" style={{ borderColor: "#8c8277" }} />
+                  <p className="text-[10px] mt-1" style={{ color: "#8c8277" }}>Only the last 4 digits are stored.</p>
                 </div>
+                <div>
+                  <label className="block text-xs tracking-widest uppercase mb-1.5" style={{ color: "#8c8277" }}>Expiry Month</label>
+                  <input value={form.expiryMonth} onChange={(e) => setForm({ ...form, expiryMonth: e.target.value })} placeholder="MM" className="w-full px-3 py-2.5 text-sm border bg-[#fafafa] outline-none" style={{ borderColor: "#8c8277" }} />
+                </div>
+                <div>
+                  <label className="block text-xs tracking-widest uppercase mb-1.5" style={{ color: "#8c8277" }}>Expiry Year</label>
+                  <input value={form.expiryYear} onChange={(e) => setForm({ ...form, expiryYear: e.target.value })} placeholder="YYYY" className="w-full px-3 py-2.5 text-sm border bg-[#fafafa] outline-none" style={{ borderColor: "#8c8277" }} />
+                </div>
+              </>}
+
+              {(form.type === "ESEWA" || form.type === "KHALTI") && <div className="col-span-2">
+                <label className="block text-xs tracking-widest uppercase mb-1.5" style={{ color: "#8c8277" }}>Wallet phone / email</label>
+                <input value={form.walletId} onChange={(e) => setForm({ ...form, walletId: e.target.value })} placeholder="98XXXXXXXX" className="w-full px-3 py-2.5 text-sm border bg-[#fafafa] outline-none" style={{ borderColor: "#8c8277" }} />
+              </div>}
+
+              {form.type === "COD" && <p className="col-span-2 text-sm" style={{ color: "#8c8277" }}>Cash on delivery has nothing to configure — just add it.</p>}
+            </div>
+
+            <div className="flex gap-3 mt-5">
+              <button type="button" onClick={submit} disabled={saving} className="px-5 py-2.5 text-xs tracking-widest uppercase" style={{ backgroundColor: "#0a0a0a", color: "#fafafa", opacity: saving ? 0.6 : 1 }}>
+                {saving ? "Saving…" : "Save method"}
+              </button>
+              <button type="button" onClick={() => setShowForm(false)} className="px-5 py-2.5 text-xs tracking-widest uppercase border flex items-center gap-1.5" style={{ borderColor: "#8c8277", color: "#8c8277" }}>
+                <FiX size={12} /> Cancel
+              </button>
+            </div>
+          </motion.div>}
+      </AnimatePresence>
+
+      {loading ? <p className="text-sm py-10 text-center" style={{ color: "#8c8277" }}>Loading…</p>
+      : methods.length === 0 ? <div className="py-16 flex flex-col items-center gap-3">
+          <FiCreditCard size={32} style={{ color: "#c9b99a" }} />
+          <p className="text-sm" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>No payment methods saved yet</p>
+        </div>
+      : <div className="flex flex-col gap-3">
+          {methods.map((m) => <div key={m.id} className="flex items-center gap-4 p-4 border" style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa", fontFamily: "Manrope, sans-serif" }}>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: brandDot(m.type) + "22", color: brandDot(m.type) }}>
+                <FiCreditCard size={16} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: "#0a0a0a" }}>{m.label}</p>
                 <p className="text-xs" style={{ color: "#8c8277" }}>
-                  {card.name} · Expires {card.expiry}
+                  {m.type}{m.expiryMonth ? ` · exp ${String(m.expiryMonth).padStart(2, "0")}/${m.expiryYear}` : ""}
                 </p>
               </div>
-
-              <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
-                {!card.isDefault && <button
-    type="button"
-    onClick={() => setDefault(card.id)}
-    className="text-xs px-3 py-1.5 border transition-colors hover:bg-[#f0ebe2]"
-    style={{ borderColor: "#f0ebe2", color: "#8c8277" }}
-  >
-                    Set Default
-                  </button>}
-                <button
-    type="button"
-    className="p-2 hover:opacity-60 transition-opacity"
-    style={{ color: "#8c8277" }}
-    aria-label="Edit card"
-  >
-                  <FiEdit2 size={14} />
-                </button>
-                <button
-    type="button"
-    onClick={() => remove(card.id)}
-    className="p-2 hover:opacity-60 transition-opacity"
-    style={{ color: "#8c8277" }}
-    aria-label="Remove card"
-  >
-                  <FiTrash2 size={14} />
-                </button>
-              </div>
+              {m.isDefault ? <span className="text-[10px] uppercase tracking-widest px-2 py-1" style={{ backgroundColor: "#2d4a3e", color: "#fafafa" }}>Default</span>
+              : <button type="button" onClick={() => makeDefault(m.id)} className="text-xs underline" style={{ color: "#8c8277" }}>Make default</button>}
+              <button type="button" onClick={() => remove(m.id)} className="p-2 transition-colors hover:text-red-500" style={{ color: "#8c8277" }} aria-label="Remove">
+                <FiTrash2 size={14} />
+              </button>
             </div>)}
-        </div>
-      </div>
-
-      {
-    /* Security note */
-  }
-      <div
-    className="flex items-center gap-3 px-4 py-3 mb-8 border"
-    style={{ borderColor: "#c9b99a", backgroundColor: "#f0ebe2", fontFamily: "Manrope, sans-serif" }}
-  >
-        <FiLock size={14} style={{ color: "#8c8277" }} />
-        <p className="text-xs" style={{ color: "#8c8277" }}>
-          Your payment info is encrypted and stored securely. We never store your full card number.
-        </p>
-      </div>
-
-      {
-    /* PayPal section */
-  }
-      <div>
-        <h2 className="text-xs tracking-widest uppercase mb-4" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>PayPal</h2>
-        <div className="p-4 border" style={{ borderColor: "#f0ebe2", backgroundColor: "#fafafa", fontFamily: "Manrope, sans-serif" }}>
-          {paypalLinked ? <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div
-    className="w-10 h-10 rounded flex items-center justify-center text-xs font-bold"
-    style={{ backgroundColor: "#003087", color: "#fafafa" }}
-  >
-                  PP
-                </div>
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: "#0a0a0a" }}>PayPal linked</p>
-                  <p className="text-xs" style={{ color: "#8c8277" }}>aria.laurent@email.com</p>
-                </div>
-              </div>
-              <button
-    type="button"
-    className="text-xs px-4 py-2 border transition-colors hover:bg-[#f0ebe2]"
-    style={{ borderColor: "#f0ebe2", color: "#8c8277" }}
-  >
-                Unlink
-              </button>
-            </div> : <div className="flex items-center justify-between">
-              <p className="text-sm" style={{ color: "#8c8277" }}>No PayPal account linked</p>
-              <button
-    type="button"
-    className="text-xs px-4 py-2 transition-colors hover:bg-[#2d4a3e]"
-    style={{ backgroundColor: "#003087", color: "#fafafa" }}
-  >
-                Link PayPal
-              </button>
-            </div>}
-        </div>
-      </div>
-
-      {
-    /* Add card form panel */
-  }
-      <AnimatePresence>
-        {showForm && <>
-            <motion.div
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    exit={{ opacity: 0 }}
-    className="fixed inset-0 z-40 bg-[#0a0a0a]/40"
-    onClick={() => setShowForm(false)}
-  />
-            <motion.div
-    initial={{ x: "100%" }}
-    animate={{ x: 0 }}
-    exit={{ x: "100%" }}
-    transition={{ type: "tween", duration: 0.32, ease: [0.25, 0, 0, 1] }}
-    className="fixed right-0 top-0 bottom-0 z-50 w-full max-w-md bg-[#fafafa] flex flex-col shadow-2xl"
-    style={{ fontFamily: "Manrope, sans-serif" }}
-  >
-              <div className="flex items-center justify-between px-6 py-5 border-b" style={{ borderColor: "#f0ebe2" }}>
-                <h2 className="font-display text-xl" style={{ color: "#0a0a0a" }}>Add New Card</h2>
-                <button type="button" onClick={() => setShowForm(false)} className="p-1 hover:opacity-60 transition-opacity" style={{ color: "#0a0a0a" }}>
-                  <FiX size={20} />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5">
-                <div>
-                  <label className="block text-xs tracking-widest uppercase mb-2" style={{ color: "#8c8277" }}>Card Number</label>
-                  <div className="relative">
-                    <FiCreditCard size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "#8c8277" }} />
-                    <input
-    type="text"
-    placeholder="1234 5678 9012 3456"
-    value={form.number}
-    onChange={(e) => setForm((f) => ({ ...f, number: formatCardNumber(e.target.value) }))}
-    className="w-full pl-10 pr-4 py-3 border bg-transparent text-sm focus:outline-none focus:border-[#0a0a0a]"
-    style={{ borderColor: "#f0ebe2", color: "#0a0a0a" }}
-  />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs tracking-widest uppercase mb-2" style={{ color: "#8c8277" }}>Expiry (MM/YY)</label>
-                    <input
-    type="text"
-    placeholder="MM/YY"
-    value={form.expiry}
-    onChange={(e) => setForm((f) => ({ ...f, expiry: formatExpiry(e.target.value) }))}
-    className="w-full px-4 py-3 border bg-transparent text-sm focus:outline-none focus:border-[#0a0a0a]"
-    style={{ borderColor: "#f0ebe2", color: "#0a0a0a" }}
-  />
-                  </div>
-                  <div>
-                    <label className="block text-xs tracking-widest uppercase mb-2" style={{ color: "#8c8277" }}>CVV</label>
-                    <input
-    type="text"
-    placeholder="•••"
-    maxLength={4}
-    value={form.cvv}
-    onChange={(e) => setForm((f) => ({ ...f, cvv: e.target.value.replace(/\D/g, "") }))}
-    className="w-full px-4 py-3 border bg-transparent text-sm focus:outline-none focus:border-[#0a0a0a]"
-    style={{ borderColor: "#f0ebe2", color: "#0a0a0a" }}
-  />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs tracking-widest uppercase mb-2" style={{ color: "#8c8277" }}>Cardholder Name</label>
-                  <input
-    type="text"
-    placeholder="As it appears on your card"
-    value={form.name}
-    onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-    className="w-full px-4 py-3 border bg-transparent text-sm focus:outline-none focus:border-[#0a0a0a]"
-    style={{ borderColor: "#f0ebe2", color: "#0a0a0a" }}
-  />
-                </div>
-
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <div
-    className="w-4 h-4 border flex items-center justify-center flex-shrink-0 transition-colors"
-    style={{ borderColor: form.useBilling ? "#0a0a0a" : "#c9b99a", backgroundColor: form.useBilling ? "#0a0a0a" : "transparent" }}
-    onClick={() => setForm((f) => ({ ...f, useBilling: !f.useBilling }))}
-  >
-                    {form.useBilling && <FiCheck size={10} style={{ color: "#fafafa" }} />}
-                  </div>
-                  <span className="text-sm" style={{ color: "#0a0a0a" }}>Use saved billing address</span>
-                </label>
-              </div>
-
-              <div className="px-6 py-5 border-t" style={{ borderColor: "#f0ebe2" }}>
-                <button
-    type="button"
-    onClick={handleSave}
-    className="w-full py-3.5 text-xs tracking-widest uppercase transition-colors flex items-center justify-center gap-2"
-    style={{ backgroundColor: saved ? "#2d4a3e" : "#0a0a0a", color: "#fafafa" }}
-  >
-                  {saved ? <><FiCheck size={14} /> Saved!</> : "Save Card"}
-                </button>
-              </div>
-            </motion.div>
-          </>}
-      </AnimatePresence>
+        </div>}
     </div>;
 }
 export {

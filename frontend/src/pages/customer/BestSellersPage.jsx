@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
+import { useMoney } from "../../context/SettingsContext";
 import { motion } from "framer-motion";
 import { FiHeart, FiStar } from "react-icons/fi";
 import { productApi, normalizeProduct } from "../../services/api";
 import { useState, useEffect } from "react";
 function BestSellersPage() {
+  const money = useMoney();
   const [bestSellers, setBestSellers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -97,7 +99,7 @@ function BestSellersPage() {
                   <FiStar className="w-3 h-3 fill-[#c9b99a] text-[#c9b99a]" />
                   <span className="text-[#8c8277] text-xs">{product.rating} ({product.reviewCount})</span>
                 </div>
-                <p className="text-[#0a0a0a] text-sm">£{product.price}</p>
+                <p className="text-[#0a0a0a] text-sm">{money(product.price)}</p>
               </Link>
             </motion.div>)}
         </div>

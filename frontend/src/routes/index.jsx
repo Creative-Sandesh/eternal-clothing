@@ -4,6 +4,7 @@ import CustomerLayout from "../layouts/CustomerLayout";
 import AccountLayout from "../layouts/AccountLayout";
 import AdminLayout from "../layouts/AdminLayout";
 import ScrollToTop from "../components/ScrollToTop"
+import { RequireAuth, RequireAdmin } from "../components/RouteGuards";
 const HomePage = lazy(() => import("../pages/customer/HomePage"));
 const ShopPage = lazy(() => import("../pages/customer/ShopPage"));
 const CollectionsPage = lazy(() => import("../pages/customer/CollectionsPage"));
@@ -99,6 +100,8 @@ const router =  createBrowserRouter([
    
   },
   {
+    element: <RequireAuth />,
+    children: [{
     Component: AccountLayout,
     children: [
       { path: "/account", Component: AccountDashboard },
@@ -115,8 +118,11 @@ const router =  createBrowserRouter([
       { path: "/account/referral", Component: ReferralPage },
       { path: "/account/settings", Component: ProfilePage }
     ]
+    }]
   },
   {
+    element: <RequireAdmin />,
+    children: [{
     Component: AdminLayout,
     children: [
       { path: "/admin", Component: AdminDashboard },
@@ -137,6 +143,7 @@ const router =  createBrowserRouter([
       { path: "/admin/users", Component: UsersPage },
       { path: "/admin/settings", Component: SettingsPage }
     ]
+    }]
   }
 ]);
 

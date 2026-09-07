@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
+import { useMoney } from "../../context/SettingsContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiHeart, FiShoppingBag, FiX } from "react-icons/fi";
 import { useWishlist } from "../../context/WishlistContext";
 import { useCart } from "../../context/CartContext";
 function WishlistPage() {
+  const money = useMoney();
   const { items, toggle } = useWishlist();
   const { addItem } = useCart();
   const handleMoveToCart = (item) => {
@@ -108,7 +110,7 @@ function WishlistPage() {
                     {item.name}
                   </h3>
                   <p className="text-sm mb-4 font-semibold" style={{ color: "#0a0a0a", fontFamily: "Manrope, sans-serif" }}>
-                    £{item.price.toFixed(2)}
+                    {money(item.price)}
                   </p>
                   <button
       type="button"

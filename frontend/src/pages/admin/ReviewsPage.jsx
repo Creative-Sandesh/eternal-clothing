@@ -137,13 +137,10 @@ function ReviewsPage() {
     }
   };
 
-  const flag = async (id) => {
-    try {
-      await reviewApi.updateStatus(id, "REPORTED");
-      setReviewList((prev) => prev.map((r) => r.id === id ? { ...r, status: "reported" } : r));
-    } catch (err) {
-      console.error("Failed to flag review", err);
-    }
+  const flag = (id) => {
+    // The API only supports PENDING/APPROVED/REJECTED, so "reported" is a
+    // local moderation flag until a backend field exists for it.
+    setReviewList((prev) => prev.map((r) => r.id === id ? { ...r, status: "reported" } : r));
   };
   const tabs = [
     { value: "pending", label: "Pending" },

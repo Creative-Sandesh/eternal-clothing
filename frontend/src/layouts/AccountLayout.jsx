@@ -1,4 +1,4 @@
-import { useState, Suspense, useEffect } from "react";
+import { useState, Suspense } from "react";
 import { NavLink, Outlet, Link, useNavigate } from "react-router-dom";
 import ScrollToTop from "../components/ScrollToTop"
 import { useAuth } from "../context/AuthContext";
@@ -38,25 +38,11 @@ const tierColor = {
   Platinum: "#2d4a3e"
 };
 function AccountLayout() {
-  const { user, loading, logout } = useAuth();
+  // Auth + role are enforced by <RequireAuth> at the route level (see routes/index.jsx),
+  // so `user` is always present here.
+  const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!loading && !user) {
-      navigate("/login", { replace: true });
-    }
-  }, [user, loading, navigate]);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
-        <div className="w-8 h-8 rounded-full border-2 border-[#f0ebe2] border-t-[#2d4a3e] animate-spin" />
-      </div>
-    );
-  }
-
-  if (!user) return null;
 
   const userObj = {
     name: `${user.firstName} ${user.lastName}`,

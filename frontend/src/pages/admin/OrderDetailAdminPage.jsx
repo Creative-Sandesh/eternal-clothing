@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useMoney } from "../../context/SettingsContext";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiArrowLeft, FiPrinter, FiTruck, FiPackage, FiCheck, FiClock, FiMapPin, FiMail } from "react-icons/fi";
@@ -16,59 +17,85 @@ const statusColors = {
 
 const statuses = ["PENDING", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED"];
 
+const badge = (s) => statusColors[String(s || "").toLowerCase()] || "bg-gray-100 text-gray-600";
+
 const timelineEvents = (order) => [
   { label: "Order Placed", time: order.createdAt, icon: <FiPackage size={14} />, done: true },
-  { label: "Order Confirmed", time: order.status !== "PENDING" && order.status !== "PROCESSING" ? order.updatedAt : null, icon: <FiCheck size={14} />, done: ["CONFIRMED", "SHIPPED", "DELIVERED"].includes(order.status) },
-  { label: "Shipped", time: order.trackingNumber ? order.updatedAt : null, icon: <FiTruck size={14} />, done: ["SHIPPED", "DELIVERED"].includes(order.status) },
+  { label: "Payment Confirmed", time: ["PROCESSING", "SHIPPED", "DELIVERED"].includes(order.status) ? order.createdAt : null, icon: <FiCheck size={14} />, done: ["PROCESSING", "SHIPPED", "DELIVERED"].includes(order.status) },
+  { label: "Shipped", time: ["SHIPPED", "DELIVERED"].includes(order.status) ? order.updatedAt : null, icon: <FiTruck size={14} />, done: ["SHIPPED", "DELIVERED"].includes(order.status) },
   { label: "Delivered", time: order.status === "DELIVERED" ? order.updatedAt : null, icon: <FiCheck size={14} />, done: order.status === "DELIVERED" }
 ];
 
 function OrderDetailAdminPage() {
+  const money = useMoney();
   const { id } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState("PENDING");
-  const [note, setNote] = useState("");
   const [tracking, setTracking] = useState("");
   const [saving, setSaving] = useState(false);
+  const [notes, setNotes] = useState([]);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [noteSaving, setNoteSaving] = useState(false);
+
+  const mapAddress = (a) => a ? {
+    line1: a.addressLine1 || "",
+    line2: a.addressLine2 || "",
+    city: a.city || "",
+    state: a.state || "",
+    zip: a.postalCode || "",
+    country: a.country || ""
+  } : null;
+
+  const mapOrder = (o) => {
+    const items = Array.isArray(o.items) ? o.items.map((i) => {
+      const v = i.productVariant || {};
+      const p = v.product || {};
+      return {
+        name: p.name || "Item",
+        size: v.size || "—",
+        color: v.colorName || "—",
+        quantity: i.quantity || 1,
+        price: Number(i.unitPrice || 0),
+        image: Array.isArray(p.images) ? p.images[0] : ""
+      };
+    }) : [];
+    const lineSubtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
+    return {
+      id: o.id,
+      orderNumber: o.orderNumber || `ORD-${o.id}`,
+      status: o.status || "PENDING",
+      createdAt: o.createdAt,
+      updatedAt: o.updatedAt || o.createdAt,
+      customerName: o.user ? `${o.user.firstName || ""} ${o.user.lastName || ""}`.trim() || "Customer" : "Guest",
+      customerEmail: o.user?.email || "",
+      customerPhone: o.user?.phoneNumber || "",
+      trackingNumber: o.trackingNumber || "",
+      couponCode: o.coupon?.code || null,
+      discount: Number(o.discountAmount || 0),
+      shipping: Number(o.shippingFee || 0),
+      tax: Number(o.taxAmount || 0),
+      total: Number(o.totalAmount || 0),
+      // Prefer the stored subtotal; fall back to summing lines for older orders.
+      subtotal: o.subtotalAmount != null ? Number(o.subtotalAmount) : lineSubtotal,
+      items,
+      payment: Array.isArray(o.payments) && o.payments[0] ? o.payments[0] : null,
+      shippingAddress: mapAddress(o.shippingAddress) || { line1: "Address unavailable", city: "", zip: "", country: "" },
+      billingAddress: mapAddress(o.billingAddress) || mapAddress(o.shippingAddress) || { line1: "Address unavailable", city: "", zip: "", country: "" }
+    };
+  };
 
   useEffect(() => {
     let active = true;
     const fetchOrder = async () => {
       try {
-        const res = await orderApi.getAdminOrders();
+        const res = await orderApi.getAdminOrderById(id);
         if (!active) return;
-        const found = (res.data || []).find(o => String(o.id) === String(id));
-        if (found) {
-          const formatted = {
-            id: found.id,
-            orderNumber: found.orderNumber || `ORD-${found.id}`,
-            status: found.status || "PENDING",
-            createdAt: found.createdAt,
-            updatedAt: found.updatedAt,
-            customerName: found.user ? `${found.user.firstName || ""} ${found.user.lastName || ""}`.trim() || "Customer" : "Guest",
-            customerEmail: found.user?.email || "",
-            trackingNumber: found.trackingNumber || "",
-            carrier: found.carrier || "DHL Express",
-            subtotal: Number(found.subtotalAmount || 0),
-            shipping: Number(found.shippingFee || 0),
-            tax: Number(found.taxAmount || 0),
-            total: Number(found.totalAmount || 0),
-            items: Array.isArray(found.items) ? found.items.map(i => ({
-              name: i.productName || i.name || "Item",
-              size: i.size || "Default",
-              color: i.color || "Default",
-              quantity: i.quantity || 1,
-              price: Number(i.unitPrice || i.price || 0),
-              image: i.image || ""
-            })) : [],
-            shippingAddress: typeof found.shippingAddress === "string" ? JSON.parse(found.shippingAddress) : (found.shippingAddress || { line1: "Address on file", city: "", zip: "", country: "" })
-          };
-          setOrder(formatted);
-          setStatus(formatted.status);
-          setTracking(formatted.trackingNumber);
-        }
+        const formatted = mapOrder(res.data);
+        setOrder(formatted);
+        setStatus(formatted.status);
+        setTracking(formatted.trackingNumber);
       } catch (err) {
         console.error("Failed to load order details", err);
       } finally {
@@ -76,17 +103,57 @@ function OrderDetailAdminPage() {
       }
     };
     fetchOrder();
+    orderApi.getNotes(id).then((r) => { if (active) setNotes(r.data || []); }).catch(() => {});
     return () => { active = false; };
   }, [id]);
 
-  const handleUpdateStatus = async (newStatus) => {
+  const addNote = async () => {
+    if (!noteDraft.trim()) return;
+    setNoteSaving(true);
     try {
-      setSaving(true);
-      await orderApi.updateStatus(id, { status: newStatus, trackingNumber: tracking });
-      setStatus(newStatus);
-      if (order) setOrder({ ...order, status: newStatus, trackingNumber: tracking });
+      const res = await orderApi.addNote(id, noteDraft.trim());
+      setNotes((prev) => [res.data, ...prev]);
+      setNoteDraft("");
     } catch (err) {
-      console.error("Failed to update status", err);
+      console.error("Failed to add note", err);
+    } finally {
+      setNoteSaving(false);
+    }
+  };
+  const removeNote = async (noteId) => {
+    setNotes((prev) => prev.filter((n) => n.id !== noteId));
+    try { await orderApi.deleteNote(noteId); } catch (err) { console.error(err); }
+  };
+
+  const persist = async (patch) => {
+    setSaving(true);
+    try {
+      const res = await orderApi.updateStatus(id, patch);
+      const formatted = mapOrder(res.data);
+      setOrder(formatted);
+      setStatus(formatted.status);
+      setTracking(formatted.trackingNumber);
+    } catch (err) {
+      console.error("Failed to update order", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUpdateStatus = (newStatus) => persist({ status: newStatus, trackingNumber: tracking });
+  const handleSaveTracking = () => persist({ trackingNumber: tracking });
+
+  const handleRefund = async () => {
+    if (!window.confirm("Refund this order? Items will be restocked and the order cancelled.")) return;
+    setSaving(true);
+    try {
+      const res = await orderApi.refund(id);
+      const formatted = mapOrder(res.data);
+      setOrder(formatted);
+      setStatus(formatted.status);
+    } catch (err) {
+      console.error("Refund failed", err);
+      alert(err.message || "Refund failed");
     } finally {
       setSaving(false);
     }
@@ -106,19 +173,23 @@ function OrderDetailAdminPage() {
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="font-display text-2xl text-gray-900">{order.orderNumber}</h1>
-            <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize ${statusColors[status]}`}>{status}</span>
+            <span className={`text-xs px-2.5 py-1 rounded-full font-medium capitalize ${badge(status)}`}>{String(status).toLowerCase()}</span>
           </div>
           <p className="text-sm text-gray-500 mt-0.5">
             Placed {new Date(order.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "long", year: "numeric" })}
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors">
-            <FiPrinter size={14} /> Invoice
+          <button
+    onClick={() => window.print()}
+    className="flex items-center gap-2 px-3 py-2 text-sm border border-gray-200 text-gray-700 rounded-xl hover:bg-gray-50 transition-colors"
+  >
+            <FiPrinter size={14} /> Print
           </button>
           <button
-    onClick={() => setStatus("shipped")}
-    className="flex items-center gap-2 px-3 py-2 text-sm bg-[#0a0a0a] text-white rounded-xl hover:bg-[#2d4a3e] transition-colors"
+    disabled={saving || status === "SHIPPED" || status === "DELIVERED"}
+    onClick={() => handleUpdateStatus("SHIPPED")}
+    className="flex items-center gap-2 px-3 py-2 text-sm bg-[#0a0a0a] text-white rounded-xl hover:bg-[#2d4a3e] transition-colors disabled:opacity-50"
   >
             <FiTruck size={14} /> Mark Shipped
           </button>
@@ -189,8 +260,8 @@ function OrderDetailAdminPage() {
                         <p className="text-xs text-gray-500">Color: {item.color}</p>
                       </td>
                       <td className="px-4 py-3 text-center text-gray-700">{item.quantity}</td>
-                      <td className="px-4 py-3 text-right text-gray-700">£{item.price.toFixed(2)}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-900">£{(item.price * item.quantity).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right text-gray-700">{money(item.price)}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-900">{money((item.price * item.quantity))}</td>
                     </tr>)}
                 </tbody>
               </table>
@@ -213,11 +284,10 @@ function OrderDetailAdminPage() {
               </div>
               <p className="text-sm text-gray-700">{order.shippingAddress.line1}</p>
               {order.shippingAddress.line2 && <p className="text-sm text-gray-700">{order.shippingAddress.line2}</p>}
-              <p className="text-sm text-gray-700">{order.shippingAddress.city}, {order.shippingAddress.zip}</p>
+              <p className="text-sm text-gray-700">{order.shippingAddress.city}{order.shippingAddress.state ? `, ${order.shippingAddress.state}` : ""} {order.shippingAddress.zip}</p>
               <p className="text-sm text-gray-700">{order.shippingAddress.country}</p>
               {order.trackingNumber && <div className="mt-3 pt-3 border-t border-gray-100">
                   <p className="text-xs text-gray-500">Tracking: <span className="font-mono font-medium text-gray-800">{order.trackingNumber}</span></p>
-                  {order.carrier && <p className="text-xs text-gray-500">Carrier: {order.carrier}</p>}
                 </div>}
             </div>
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
@@ -225,14 +295,15 @@ function OrderDetailAdminPage() {
                 <FiMapPin size={14} className="text-[#2d4a3e]" />
                 <h2 className="font-semibold text-gray-900">Billing Address</h2>
               </div>
-              <p className="text-sm text-gray-700">{order.shippingAddress.line1}</p>
-              <p className="text-sm text-gray-700">{order.shippingAddress.city}, {order.shippingAddress.zip}</p>
-              <p className="text-sm text-gray-700">{order.shippingAddress.country}</p>
+              <p className="text-sm text-gray-700">{order.billingAddress.line1}</p>
+              {order.billingAddress.line2 && <p className="text-sm text-gray-700">{order.billingAddress.line2}</p>}
+              <p className="text-sm text-gray-700">{order.billingAddress.city}{order.billingAddress.state ? `, ${order.billingAddress.state}` : ""} {order.billingAddress.zip}</p>
+              <p className="text-sm text-gray-700">{order.billingAddress.country}</p>
             </div>
           </motion.div>
 
           {
-    /* Add Note + Tracking */
+    /* Tracking */
   }
           <motion.div
     initial={{ opacity: 0, y: 12 }}
@@ -240,22 +311,7 @@ function OrderDetailAdminPage() {
     transition={{ delay: 0.14 }}
     className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4"
   >
-            <h2 className="font-semibold text-gray-900">Add Note / Tracking</h2>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Internal Note</label>
-              <div className="flex gap-2">
-                <textarea
-    value={note}
-    onChange={(e) => setNote(e.target.value)}
-    rows={2}
-    placeholder="Add a note about this order..."
-    className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#2d4a3e] resize-none"
-  />
-                <button className="px-4 py-2 bg-[#0a0a0a] text-white text-sm font-medium rounded-lg hover:bg-[#2d4a3e] transition-colors self-end">
-                  Add
-                </button>
-              </div>
-            </div>
+            <h2 className="font-semibold text-gray-900">Shipment Tracking</h2>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1.5">Tracking Number</label>
               <div className="flex gap-2">
@@ -266,10 +322,44 @@ function OrderDetailAdminPage() {
     placeholder="Enter tracking number..."
     className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#2d4a3e] font-mono"
   />
-                <button className="px-4 py-2 bg-[#0a0a0a] text-white text-sm font-medium rounded-lg hover:bg-[#2d4a3e] transition-colors">
-                  Save
+                <button onClick={handleSaveTracking} disabled={saving} className="px-4 py-2 bg-[#0a0a0a] text-white text-sm font-medium rounded-lg hover:bg-[#2d4a3e] transition-colors disabled:opacity-60">
+                  {saving ? "Saving…" : "Save"}
                 </button>
               </div>
+            </div>
+          </motion.div>
+
+          {/* Internal notes */}
+          <motion.div
+    initial={{ opacity: 0, y: 12 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay: 0.16 }}
+    className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4"
+  >
+            <h2 className="font-semibold text-gray-900">Internal Notes</h2>
+            <div className="flex gap-2">
+              <textarea
+    value={noteDraft}
+    onChange={(e) => setNoteDraft(e.target.value)}
+    rows={2}
+    placeholder="Add a note visible to staff only…"
+    className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:border-[#2d4a3e] resize-none"
+  />
+              <button onClick={addNote} disabled={noteSaving || !noteDraft.trim()} className="px-4 py-2 bg-[#0a0a0a] text-white text-sm font-medium rounded-lg hover:bg-[#2d4a3e] transition-colors self-end disabled:opacity-40">
+                {noteSaving ? "…" : "Add"}
+              </button>
+            </div>
+            <div className="space-y-2">
+              {notes.map((n) => <div key={n.id} className="group flex items-start justify-between gap-3 p-3 bg-gray-50 rounded-lg text-sm">
+                  <div className="min-w-0">
+                    <p className="text-gray-800 whitespace-pre-wrap break-words">{n.body}</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {n.author ? `${n.author.firstName} ${n.author.lastName}` : "Staff"} ·{" "}
+                      {new Date(n.createdAt).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    </p>
+                  </div>
+                  <button onClick={() => removeNote(n.id)} className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition" title="Delete">✕</button>
+                </div>)}
             </div>
           </motion.div>
         </div>
@@ -300,8 +390,12 @@ function OrderDetailAdminPage() {
             <div className="space-y-2 text-sm">
               <div className="flex items-center gap-2 text-gray-600">
                 <FiMail size={13} className="text-gray-400 flex-shrink-0" />
-                <span className="truncate">{order.customerEmail}</span>
+                <span className="truncate">{order.customerEmail || "—"}</span>
               </div>
+              {order.customerPhone && <div className="flex items-center gap-2 text-gray-600">
+                <FiMapPin size={13} className="text-gray-400 flex-shrink-0" />
+                <span className="truncate">{order.customerPhone}</span>
+              </div>}
             </div>
           </motion.div>
 
@@ -318,24 +412,37 @@ function OrderDetailAdminPage() {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between text-gray-600">
                 <span>Subtotal</span>
-                <span className="font-medium">£{order.subtotal.toFixed(2)}</span>
+                <span className="font-medium">{money(order.subtotal)}</span>
               </div>
+              {order.discount > 0 && <div className="flex justify-between text-gray-600">
+                <span>Discount{order.couponCode ? ` (${order.couponCode})` : ""}</span>
+                <span className="font-medium text-[#2d4a3e]">−{money(order.discount)}</span>
+              </div>}
               <div className="flex justify-between text-gray-600">
                 <span>Shipping</span>
-                <span className="font-medium">{order.shipping === 0 ? "Free" : `\xA3${order.shipping.toFixed(2)}`}</span>
+                <span className="font-medium">{order.shipping === 0 ? "Free" : money(order.shipping)}</span>
               </div>
-              <div className="flex justify-between text-gray-600">
-                <span>Tax (VAT 20%)</span>
-                <span className="font-medium">£{order.tax.toFixed(2)}</span>
-              </div>
+              {order.tax > 0 && <div className="flex justify-between text-gray-600">
+                <span>Tax</span>
+                <span className="font-medium">{money(order.tax)}</span>
+              </div>}
               <div className="border-t border-gray-100 pt-2 flex justify-between font-semibold text-gray-900">
                 <span>Total</span>
-                <span>£{order.total.toFixed(2)}</span>
+                <span>{money(order.total)}</span>
               </div>
+              {order.payment && <div className="flex justify-between text-xs text-gray-400 pt-1">
+                <span>{order.payment.paymentMethod} · {order.payment.status}</span>
+                <span className="font-mono">{order.payment.transactionId}</span>
+              </div>}
             </div>
-            <button className="w-full mt-4 px-4 py-2.5 border border-red-200 text-red-600 text-sm font-medium rounded-xl hover:bg-red-50 transition-colors">
-              Issue Refund
-            </button>
+            {order.payment?.status === "COMPLETED" && status !== "CANCELLED" && <button
+    onClick={handleRefund}
+    disabled={saving}
+    className="w-full mt-4 px-4 py-2.5 border border-red-200 text-red-600 text-sm font-medium rounded-xl hover:bg-red-50 transition-colors disabled:opacity-50"
+  >
+              {saving ? "Processing…" : "Issue Refund"}
+            </button>}
+            {status === "CANCELLED" && order.payment?.status === "REFUNDED" && <p className="mt-4 text-xs text-center text-gray-400">Refunded — items restocked</p>}
           </motion.div>
 
           {

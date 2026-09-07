@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { FiMail, FiLock, FiUser, FiArrowRight, FiCheck, FiAlertCircle } from "react-icons/fi";
+import { FiMail, FiLock, FiUser, FiArrowRight, FiCheck, FiGift } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
+import { marketingApi } from "../../services/api";
 function RegisterPage() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const refCode = (params.get("ref") || "").toUpperCase().trim();
 
   const [form, setForm] = useState({
     firstName: "",
@@ -39,7 +42,11 @@ function RegisterPage() {
         lastName: form.lastName,
         email: form.email,
         password: form.password,
+        referralCode: refCode || undefined,
       });
+      if (form.newsletter) {
+        marketingApi.subscribe(form.email, "WEBSITE").catch(() => {});
+      }
       navigate("/login", { state: { registered: true } });
     } catch (err) {
       setError(err.message || "Registration failed. Please try again.");
@@ -110,9 +117,16 @@ function RegisterPage() {
           <h1 className="font-display text-4xl mb-2" style={{ color: "#0a0a0a" }}>
             Create account
           </h1>
-          <p className="text-sm mb-10" style={{ ...labelStyle }}>
+          <p className="text-sm mb-6" style={{ ...labelStyle }}>
             Join the Eternal community
           </p>
+
+          {refCode && <div className="flex items-center gap-2 mb-6 px-3 py-2.5 text-xs rounded" style={{ backgroundColor: "#2d4a3e15", color: "#2d4a3e", fontFamily: "Manrope, sans-serif" }}>
+            <FiGift size={13} />
+            <span>Referral code <strong className="font-mono">{refCode}</strong> applied — you'll get bonus points on your first order.</span>
+          </div>}
+
+          {error && <div className="mb-6 px-3 py-2.5 text-xs rounded" style={{ backgroundColor: "#fef2f2", color: "#b91c1c", fontFamily: "Manrope, sans-serif" }}>{error}</div>}
 
           <form onSubmit={handleSubmit} className="space-y-7">
             {

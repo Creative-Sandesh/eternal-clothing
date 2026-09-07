@@ -20,6 +20,17 @@ import WishlistItem from "./wishlistItem.model.js";
 import Setting from "./settings.model.js";
 import BlogPost from "./blogpost.model.js";
 
+import LoyaltyTransaction from "./loyaltyTransaction.model.js";
+import Notification from "./notification.model.js";
+
+import Campaign from "./campaign.model.js";
+import Banner from "./banner.model.js";
+import NewsletterSubscriber from "./newsletterSubscriber.model.js";
+import Referral from "./referral.model.js";
+import PaymentMethod from "./paymentMethod.model.js";
+import OrderNote from "./orderNote.model.js";
+import DiscountRule from "./discountRule.model.js";
+
 /*
 |--------------------------------------------------------------------------
 | USER RELATIONSHIPS
@@ -297,6 +308,108 @@ BlogPost.belongsTo(User, {
 
 /*
 |--------------------------------------------------------------------------
+| LOYALTY
+|--------------------------------------------------------------------------
+*/
+
+User.hasMany(LoyaltyTransaction, {
+    foreignKey: "userId",
+    as: "loyaltyTransactions",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+});
+
+LoyaltyTransaction.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+});
+
+Order.hasMany(LoyaltyTransaction, {
+    foreignKey: "orderId",
+    as: "loyaltyTransactions",
+    onDelete: "SET NULL",
+    onUpdate: "CASCADE",
+});
+
+LoyaltyTransaction.belongsTo(Order, {
+    foreignKey: "orderId",
+    as: "order",
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| NOTIFICATIONS
+|--------------------------------------------------------------------------
+*/
+
+User.hasMany(Notification, {
+    foreignKey: "userId",
+    as: "notifications",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+});
+
+Notification.belongsTo(User, {
+    foreignKey: "userId",
+    as: "user",
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| REFERRALS
+|--------------------------------------------------------------------------
+*/
+
+User.hasMany(Referral, {
+    foreignKey: "referrerId",
+    as: "referralsMade",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+});
+
+Referral.belongsTo(User, { foreignKey: "referrerId", as: "referrer" });
+Referral.belongsTo(User, { foreignKey: "refereeId", as: "referee" });
+
+User.belongsTo(User, { foreignKey: "referredBy", as: "referredByUser" });
+
+
+/*
+|--------------------------------------------------------------------------
+| SAVED PAYMENT METHODS
+|--------------------------------------------------------------------------
+*/
+
+User.hasMany(PaymentMethod, {
+    foreignKey: "userId",
+    as: "paymentMethods",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+});
+
+PaymentMethod.belongsTo(User, { foreignKey: "userId", as: "user" });
+
+
+/*
+|--------------------------------------------------------------------------
+| ORDER NOTES
+|--------------------------------------------------------------------------
+*/
+
+Order.hasMany(OrderNote, {
+    foreignKey: "orderId",
+    as: "notes",
+    onDelete: "CASCADE",
+    onUpdate: "CASCADE",
+});
+
+OrderNote.belongsTo(Order, { foreignKey: "orderId", as: "order" });
+OrderNote.belongsTo(User, { foreignKey: "authorId", as: "author" });
+
+
+/*
+|--------------------------------------------------------------------------
 | EXPORT MODELS
 |--------------------------------------------------------------------------
 */
@@ -323,4 +436,15 @@ export {
 
     Setting,
     BlogPost,
+
+    LoyaltyTransaction,
+    Notification,
+
+    Campaign,
+    Banner,
+    NewsletterSubscriber,
+    Referral,
+    PaymentMethod,
+    OrderNote,
+    DiscountRule,
 };

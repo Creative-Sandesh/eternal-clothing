@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
+import { useMoney } from "../../context/SettingsContext";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiSearch, FiX, FiHeart } from "react-icons/fi";
 import { productApi, normalizeProduct } from "../../services/api";
 function SearchPage() {
+  const money = useMoney();
   const [searchParams, setSearchParams] = useSearchParams();
   const [inputValue, setInputValue] = useState(searchParams.get("q") ?? "");
   const inputRef = useRef(null);
@@ -139,8 +141,8 @@ function SearchPage() {
                       <p className="text-[#8c8277] text-[10px] tracking-widest uppercase mb-1">{product.category}</p>
                       <h3 className="text-[#0a0a0a] text-sm font-medium leading-snug mb-1 hover:text-[#2d4a3e] transition-colors">{product.name}</h3>
                       <div className="flex items-center gap-2">
-                        <p className={`text-sm ${product.isSale ? "text-red-600" : "text-[#0a0a0a]"}`}>£{product.price}</p>
-                        {product.originalPrice && <p className="text-[#8c8277] text-sm line-through">£{product.originalPrice}</p>}
+                        <p className={`text-sm ${product.isSale ? "text-red-600" : "text-[#0a0a0a]"}`}>{money(product.price)}</p>
+                        {product.originalPrice && <p className="text-[#8c8277] text-sm line-through">{money(product.originalPrice)}</p>}
                       </div>
                     </Link>
                   </motion.div>)}

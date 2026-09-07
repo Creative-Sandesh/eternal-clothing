@@ -18,6 +18,7 @@ const ConnectDB = async() => {
     // Start your Express server here
   } catch (error) {
     console.error("Database connection failed:", error);
+    throw error;
   }
 }
 

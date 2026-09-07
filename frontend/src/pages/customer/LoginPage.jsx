@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { FiMail, FiLock, FiArrowRight, FiAlertCircle } from "react-icons/fi";
 import { useAuth } from "../../context/AuthContext";
 function LoginPage() {
-  const { login, isAuthenticated, isAdmin } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || null;
@@ -19,12 +19,15 @@ function LoginPage() {
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
-      // Redirect: if the user was going somewhere specific, send them there;
-      // otherwise admins go to /admin, customers go to /account.
+      const res = await login(email, password);
+      // Read the role straight from the login response — the context's isAdmin
+      // is still stale in this render right after login().
+      const role = res?.data?.user?.role;
+      const goesToAdmin = role === "ADMIN" || role === "STAFF";
+      // Redirect: honour an intended destination, else admins → /admin, customers → /account.
       if (from) {
         navigate(from, { replace: true });
-      } else if (isAdmin) {
+      } else if (goesToAdmin) {
         navigate("/admin", { replace: true });
       } else {
         navigate("/account", { replace: true });

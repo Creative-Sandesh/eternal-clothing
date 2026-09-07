@@ -1,10 +1,18 @@
 import { useState, useEffect } from "react";
+import { useMoney, useSettings } from "../../context/SettingsContext";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiCheck, FiChevronRight, FiLock, FiPackage, FiCreditCard, FiMapPin, FiTag, FiLoader } from "react-icons/fi";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
-import { addressApi, couponApi, orderApi } from "../../services/api";
+import { addressApi, couponApi, orderApi, paymentMethodApi, marketingApi } from "../../services/api";
+
+const PROVIDERS = [
+  { value: "CARD", label: "Credit / Debit Card" },
+  { value: "ESEWA", label: "eSewa" },
+  { value: "KHALTI", label: "Khalti" },
+  { value: "COD", label: "Cash on Delivery" },
+];
 const STEPS = [
   { number: 1, label: "Contact", icon: FiCheck },
   { number: 2, label: "Shipping", icon: FiMapPin },
@@ -12,6 +20,8 @@ const STEPS = [
   { number: 4, label: "Review", icon: FiPackage }
 ];
 const COUNTRIES = [
+  "Nepal",
+  "India",
   "United Kingdom",
   "United States",
   "France",
@@ -26,6 +36,7 @@ const COUNTRIES = [
   "Japan"
 ];
 function CheckoutPage() {
+  const money = useMoney();
   const [currentStep, setCurrentStep] = useState(1);
   const [form, setForm] = useState({
     email: "",
@@ -35,8 +46,7 @@ function CheckoutPage() {
     address: "",
     city: "",
     postcode: "",
-    country: "United Kingdom",
-    shippingMethod: "standard",
+    country: "Nepal",
     cardNumber: "",
     expiry: "",
     cvv: "",
@@ -58,6 +68,11 @@ function CheckoutPage() {
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderError, setOrderError] = useState("");
 
+  // Payment
+  const [paymentProvider, setPaymentProvider] = useState("CARD");
+  const [savedMethods, setSavedMethods] = useState([]);
+  const [selectedSavedMethodId, setSelectedSavedMethodId] = useState(null);
+
   const navigate = useNavigate();
   const { user } = useAuth();
   const { items, total, clearCart } = useCart();
@@ -67,6 +82,20 @@ function CheckoutPage() {
     if (user?.email && !form.email) {
       setForm((prev) => ({ ...prev, email: user.email }));
     }
+  }, [user]);
+
+  // Load saved payment methods for logged-in users
+  useEffect(() => {
+    if (!user) return;
+    paymentMethodApi.getAll().then((res) => {
+      const list = res.data || [];
+      setSavedMethods(list);
+      const def = list.find((m) => m.isDefault) || list[0];
+      if (def) {
+        setSelectedSavedMethodId(def.id);
+        setPaymentProvider(def.type);
+      }
+    }).catch(() => {});
   }, [user]);
 
   // Load saved addresses for logged-in users
@@ -95,9 +124,12 @@ function CheckoutPage() {
     }
   }, [user]);
 
-  const shippingCost = form.shippingMethod === "express" ? 12 : form.shippingMethod === "nextday" ? 25 : total >= 200 ? 0 : 8;
+  // Estimate only — the backend recomputes shipping and tax from store settings on checkout.
+  const { settings, freeShippingThreshold, shippingFee } = useSettings();
+  const taxRatePercent = Number(settings.tax_rate_percent) || 0;
   const displayTotal = items.length > 0 ? total : 0;
-  const tax = displayTotal * 0.2;
+  const shippingCost = displayTotal === 0 || (freeShippingThreshold > 0 && displayTotal >= freeShippingThreshold) ? 0 : shippingFee;
+  const tax = displayTotal * (taxRatePercent / 100);
   const grandTotal = displayTotal + shippingCost + tax - couponDiscount;
 
   function updateForm(field, value) {
@@ -194,12 +226,45 @@ function CheckoutPage() {
         items: orderItems,
         shippingAddressId,
         billingAddressId,
-        couponCode: appliedCoupon || undefined
+        couponCode: appliedCoupon || undefined,
       };
+      // Use a saved method if the selected radio maps to one, else the raw provider.
+      const savedMatch = savedMethods.find((m) => m.id === selectedSavedMethodId && m.type === paymentProvider);
+      if (savedMatch) payload.savedPaymentMethodId = savedMatch.id;
+      else payload.provider = paymentProvider;
 
       const res = await orderApi.checkout(payload);
-      const orderId = res.data?.order?.id;
+      const order = res.data?.order;
+      const orderId = order?.id;
+
+      // Opt into the newsletter if requested.
+      if (form.newsletter && form.email) {
+        marketingApi.subscribe(form.email, "CHECKOUT").catch(() => {});
+      }
+
       clearCart();
+
+      if (res.data?.requiresPayment) {
+        const rp = res.data.redirect?.redirect;
+        if (rp?.method === "POST" && rp.url && !res.data.redirect?.sandbox) {
+          // Real gateway (eSewa) — POST the signed form to the provider.
+          const f = document.createElement("form");
+          f.method = "POST";
+          f.action = rp.url;
+          Object.entries(rp.fields || {}).forEach(([k, v]) => {
+            const input = document.createElement("input");
+            input.type = "hidden"; input.name = k; input.value = String(v);
+            f.appendChild(input);
+          });
+          document.body.appendChild(f);
+          f.submit();
+          return;
+        }
+        // Sandbox / no keys — confirm on the confirmation page.
+        navigate("/order-confirmation", { state: { orderId, provider: paymentProvider, verify: true } });
+        return;
+      }
+
       navigate("/order-confirmation", { state: { orderId } });
     } catch (err) {
       setOrderError(err.message || "Failed to place order. Please try again.");
@@ -445,44 +510,17 @@ function CheckoutPage() {
                   {/* Shipping Method */}
                   <div className="mt-8">
                     <p className={labelClass + " mb-4"}>Shipping Method</p>
-                    <div className="space-y-3">
-                      {[
-                        { id: "standard", label: "Standard", price: "Free", detail: "3–5 working days" },
-                        { id: "express", label: "Express", price: "£12.00", detail: "1–2 working days" },
-                        { id: "nextday", label: "Next Day", price: "£25.00", detail: "Order before 2pm" }
-                      ].map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          onClick={() => updateForm("shippingMethod", option.id)}
-                          className={[
-                            "w-full border p-4 text-left transition-colors",
-                            form.shippingMethod === option.id
-                              ? "border-eternal-black bg-eternal-beige"
-                              : "border-eternal-stone/30 bg-transparent hover:border-eternal-stone"
-                          ].join(" ")}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div
-                                className={[
-                                  "h-4 w-4 rounded-full border flex items-center justify-center flex-shrink-0",
-                                  form.shippingMethod === option.id ? "border-eternal-black" : "border-eternal-stone"
-                                ].join(" ")}
-                              >
-                                {form.shippingMethod === option.id && (
-                                  <div className="h-2 w-2 rounded-full bg-eternal-black" />
-                                )}
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium">{option.label}</p>
-                                <p className="text-xs text-eternal-stone mt-0.5">{option.detail}</p>
-                              </div>
-                            </div>
-                            <span className="text-sm font-medium">{option.price}</span>
-                          </div>
-                        </button>
-                      ))}
+                    <div className="w-full border border-eternal-black bg-eternal-beige p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium">Standard Delivery</p>
+                          <p className="text-xs text-eternal-stone mt-0.5">3–5 working days</p>
+                        </div>
+                        <span className="text-sm font-medium">{shippingCost === 0 ? "Free" : money(shippingCost)}</span>
+                      </div>
+                      {freeShippingThreshold > 0 && shippingCost > 0 && (
+                        <p className="text-xs text-eternal-stone mt-2">Free over {money(freeShippingThreshold)}</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -492,60 +530,80 @@ function CheckoutPage() {
     /* Step 3 — Payment */
   }
               {currentStep === 3 && <div>
-                  <h2 className="font-display text-2xl mb-6">Payment Details</h2>
+                  <h2 className="font-display text-2xl mb-6">Payment Method</h2>
                   <div className="flex items-center gap-1.5 text-xs text-eternal-stone mb-6">
                     <FiLock size={12} />
                     <span>Secure, encrypted payment</span>
                   </div>
-                  <div className="space-y-6">
-                    <div>
-                      <label className={labelClass}>Name on Card</label>
-                      <input
-    type="text"
-    className={inputClass}
-    placeholder="Jane Smith"
-    value={form.nameOnCard}
-    onChange={(e) => updateForm("nameOnCard", e.target.value)}
-  />
-                    </div>
-                    <div>
-                      <label className={labelClass}>Card Number</label>
-                      <input
-    type="text"
-    className={inputClass}
-    placeholder="●●●● ●●●● ●●●● ●●●●"
-    value={form.cardNumber}
-    maxLength={19}
-    onChange={(e) => updateForm("cardNumber", formatCardNumber(e.target.value))}
-    inputMode="numeric"
-  />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className={labelClass}>Expiry (MM/YY)</label>
-                        <input
-    type="text"
-    className={inputClass}
-    placeholder="MM/YY"
-    value={form.expiry}
-    maxLength={5}
-    onChange={(e) => updateForm("expiry", formatExpiry(e.target.value))}
-    inputMode="numeric"
-  />
+                  <div className="space-y-4">
+                    {/* Saved methods */}
+                    {savedMethods.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => { setSelectedSavedMethodId(m.id); setPaymentProvider(m.type); }}
+                        className={[
+                          "w-full border p-4 text-left text-sm transition-colors flex items-center justify-between",
+                          selectedSavedMethodId === m.id ? "border-eternal-black bg-eternal-beige" : "border-eternal-stone/30 hover:border-eternal-stone"
+                        ].join(" ")}
+                      >
+                        <span className="font-medium">{m.label}</span>
+                        <span className="text-xs text-eternal-stone">{m.type}{m.isDefault ? " · default" : ""}</span>
+                      </button>
+                    ))}
+
+                    {/* Provider choices */}
+                    <p className={labelClass + " pt-2"}>{savedMethods.length ? "Or pay another way" : "Choose a payment method"}</p>
+                    {PROVIDERS.map((p) => (
+                      <button
+                        key={p.value}
+                        type="button"
+                        onClick={() => { setPaymentProvider(p.value); setSelectedSavedMethodId(null); }}
+                        className={[
+                          "w-full border p-4 text-left text-sm transition-colors flex items-center gap-3",
+                          paymentProvider === p.value && !selectedSavedMethodId ? "border-eternal-black bg-eternal-beige" : "border-eternal-stone/30 hover:border-eternal-stone"
+                        ].join(" ")}
+                      >
+                        <span className={[
+                          "h-4 w-4 rounded-full border flex items-center justify-center flex-shrink-0",
+                          paymentProvider === p.value && !selectedSavedMethodId ? "border-eternal-black" : "border-eternal-stone"
+                        ].join(" ")}>
+                          {paymentProvider === p.value && !selectedSavedMethodId && <span className="h-2 w-2 rounded-full bg-eternal-black" />}
+                        </span>
+                        {p.label}
+                      </button>
+                    ))}
+
+                    {/* Card fields only for a fresh card */}
+                    {paymentProvider === "CARD" && !selectedSavedMethodId && (
+                      <div className="space-y-6 pt-2">
+                        <div>
+                          <label className={labelClass}>Name on Card</label>
+                          <input type="text" className={inputClass} placeholder="Jane Smith" value={form.nameOnCard} onChange={(e) => updateForm("nameOnCard", e.target.value)} />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Card Number</label>
+                          <input type="text" className={inputClass} placeholder="●●●● ●●●● ●●●● ●●●●" value={form.cardNumber} maxLength={19} onChange={(e) => updateForm("cardNumber", formatCardNumber(e.target.value))} inputMode="numeric" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className={labelClass}>Expiry (MM/YY)</label>
+                            <input type="text" className={inputClass} placeholder="MM/YY" value={form.expiry} maxLength={5} onChange={(e) => updateForm("expiry", formatExpiry(e.target.value))} inputMode="numeric" />
+                          </div>
+                          <div>
+                            <label className={labelClass}>CVV</label>
+                            <input type="password" className={inputClass} placeholder="•••" value={form.cvv} maxLength={4} onChange={(e) => updateForm("cvv", e.target.value.replace(/\D/g, "").slice(0, 4))} inputMode="numeric" />
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <label className={labelClass}>CVV</label>
-                        <input
-    type="password"
-    className={inputClass}
-    placeholder="•••"
-    value={form.cvv}
-    maxLength={4}
-    onChange={(e) => updateForm("cvv", e.target.value.replace(/\D/g, "").slice(0, 4))}
-    inputMode="numeric"
-  />
-                      </div>
-                    </div>
+                    )}
+
+                    {(paymentProvider === "ESEWA" || paymentProvider === "KHALTI") && !selectedSavedMethodId && (
+                      <p className="text-xs text-eternal-stone pt-1">You'll be taken to {paymentProvider === "ESEWA" ? "eSewa" : "Khalti"} to complete payment after placing the order.</p>
+                    )}
+                    {paymentProvider === "COD" && (
+                      <p className="text-xs text-eternal-stone pt-1">Pay in cash when your order is delivered.</p>
+                    )}
 
                     <label className="flex items-start gap-3 cursor-pointer mt-4">
                       <div
@@ -638,8 +696,8 @@ function CheckoutPage() {
                         {form.address && <p className="text-sm text-eternal-stone">
                             {form.address}, {form.city} {form.postcode}
                           </p>}
-                        <p className="text-xs text-eternal-stone mt-1 capitalize">
-                          {form.shippingMethod === "standard" ? "Standard \u2014 Free (3\u20135 working days)" : form.shippingMethod === "express" ? "Express \u2014 \xA312.00 (1\u20132 working days)" : "Next Day \u2014 \xA325.00 (Order before 2pm)"}
+                        <p className="text-xs text-eternal-stone mt-1">
+                          {`Standard \u2014 ${shippingCost === 0 ? "Free" : money(shippingCost)} (3\u20135 working days)`}
                         </p>
                       </div>
                       <button
@@ -656,7 +714,13 @@ function CheckoutPage() {
                     <div className="py-4 flex items-start justify-between">
                       <div>
                         <p className={labelClass + " mb-1"}>Payment</p>
-                        <p className="text-sm font-mono tracking-wider">{maskedCard()}</p>
+                        <p className="text-sm">
+                          {selectedSavedMethodId
+                            ? savedMethods.find((m) => m.id === selectedSavedMethodId)?.label
+                            : paymentProvider === "CARD"
+                              ? maskedCard()
+                              : PROVIDERS.find((p) => p.value === paymentProvider)?.label}
+                        </p>
                       </div>
                       <button
     onClick={() => setCurrentStep(3)}
@@ -754,30 +818,11 @@ function CheckoutPage() {
                       <p className="text-xs text-eternal-stone">Qty: {item.quantity}</p>
                     </div>
                     <p className="text-sm font-medium flex-shrink-0">
-                      £{((item.price ?? 0) * (item.quantity ?? 1)).toFixed(2)}
+                      {money(((item.price ?? 0) * (item.quantity ?? 1)))}
                     </p>
-                  </div>) : <>
-                  <div className="flex gap-4">
-                    <div className="w-[60px] h-[80px] bg-eternal-stone/20 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium leading-snug">
-                        Oversized Cotton Poplin Shirt
-                      </p>
-                      <p className="text-xs text-eternal-stone mt-0.5">M / Chalk White</p>
-                      <p className="text-xs text-eternal-stone">Qty: 1</p>
-                    </div>
-                    <p className="text-sm font-medium flex-shrink-0">£185</p>
-                  </div>
-                  <div className="flex gap-4">
-                    <div className="w-[60px] h-[80px] bg-eternal-stone/20 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium leading-snug">Merino Crewneck Knit</p>
-                      <p className="text-xs text-eternal-stone mt-0.5">S / Ivory</p>
-                      <p className="text-xs text-eternal-stone">Qty: 1</p>
-                    </div>
-                    <p className="text-sm font-medium flex-shrink-0">£220</p>
-                  </div>
-                </>}
+                  </div>) : (
+                  <p className="text-sm text-eternal-stone">Your cart is empty.</p>
+                )}
             </div>
 
             {/* Coupon Code Input */}
@@ -804,34 +849,36 @@ function CheckoutPage() {
               </div>
               {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
               {appliedCoupon && !couponError && (
-                <p className="text-xs text-green-600 mt-1">✓ Code "{appliedCoupon}" applied — £{couponDiscount.toFixed(2)} off</p>
+                <p className="text-xs text-green-600 mt-1">✓ Code "{appliedCoupon}" applied — {money(couponDiscount)} off</p>
               )}
             </div>
 
             <div className="border-t border-eternal-stone/20 pt-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-eternal-stone">Subtotal</span>
-                <span>£{displayTotal.toFixed(2)}</span>
+                <span>{money(displayTotal)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-eternal-stone">Shipping</span>
                 <span>
-                  {shippingCost === 0 ? "Free" : `£${shippingCost.toFixed(2)}`}
+                  {shippingCost === 0 ? "Free" : money(shippingCost)}
                 </span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-eternal-stone">Tax (20% VAT)</span>
-                <span>£{tax.toFixed(2)}</span>
-              </div>
+              {tax > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-eternal-stone">Tax ({taxRatePercent}%)</span>
+                  <span>{money(tax)}</span>
+                </div>
+              )}
               {couponDiscount > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
                   <span>Discount ({appliedCoupon})</span>
-                  <span>-£{couponDiscount.toFixed(2)}</span>
+                  <span>-{money(couponDiscount)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm font-medium border-t border-eternal-stone/20 pt-3 mt-3">
                 <span>Total</span>
-                <span>£{Math.max(0, grandTotal).toFixed(2)}</span>
+                <span>{money(Math.max(0, grandTotal))}</span>
               </div>
             </div>
 

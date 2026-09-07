@@ -7,6 +7,20 @@ import Product from "../models/product.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { notify } from "../utils/notify.js";
+
+// Current user's own reviews (any status), newest first.
+const getMyReviews = asyncHandler(async (req, res) => {
+  const reviews = await Review.findAll({
+    where: { userId: req.user.id },
+    include: [{ model: Product, as: "product", attributes: ["id", "name", "slug", "images"] }],
+    order: [["createdAt", "DESC"]]
+  });
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, reviews, "Your reviews fetched successfully"));
+});
 
 const getProductReviews = asyncHandler(async (req, res) => {
   const { productId } = req.query;
@@ -47,20 +61,25 @@ const createReview = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Product not found");
   }
 
-  // Verify customer has a DELIVERED order for this product (Verified Purchase policy)
-  const hasPurchased = await Order.findOne({
-    where: { userId: req.user.id, status: "DELIVERED" },
-    include: [{
-      model: OrderItem,
-      as: "items",
-      required: true,
-      include: [{
+  // Verify customer has a DELIVERED order for this product (Verified Purchase policy).
+  // Query from the OrderItem side to avoid Sequelize's subquery join issues.
+  const hasPurchased = await OrderItem.findOne({
+    include: [
+      {
+        model: Order,
+        as: "order",
+        required: true,
+        where: { userId: req.user.id, status: "DELIVERED" },
+        attributes: []
+      },
+      {
         model: ProductVariant,
         as: "productVariant",
         required: true,
-        where: { productId }
-      }]
-    }]
+        where: { productId },
+        attributes: []
+      }
+    ]
   });
 
   if (!hasPurchased) {
@@ -114,12 +133,28 @@ const updateReviewStatus = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Invalid status payload");
   }
 
-  const review = await Review.findByPk(id);
+  const review = await Review.findByPk(id, {
+    include: [{ model: Product, as: "product", attributes: ["name", "slug"] }]
+  });
   if (!review) {
     throw new ApiError(404, "Review not found");
   }
 
+  const previous = review.status;
   await review.update({ status });
+
+  if (status !== previous && (status === "APPROVED" || status === "REJECTED")) {
+    const productName = review.product?.name || "a product";
+    await notify(review.userId, {
+      type: status === "APPROVED" ? "REVIEW_APPROVED" : "REVIEW_REJECTED",
+      title: status === "APPROVED" ? "Review published" : "Review not approved",
+      message:
+        status === "APPROVED"
+          ? `Your review of ${productName} is now live.`
+          : `Your review of ${productName} was not approved.`,
+      link: review.product?.slug ? `/product/${review.product.slug}` : null
+    });
+  }
 
   return res
     .status(200)
@@ -142,6 +177,7 @@ const deleteReview = asyncHandler(async (req, res) => {
 });
 
 export {
+  getMyReviews,
   getProductReviews,
   createReview,
   getAdminReviews,

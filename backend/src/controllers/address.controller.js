@@ -22,7 +22,7 @@ const createAddress = asyncHandler(async (req, res) => {
     isDefaultBilling = false
   } = req.body;
 
-  if (!addressLine1 || !city || !state || !postalCode || !country) {
+  if (!addressLine1 || !city || !postalCode || !country) {
     throw new ApiError(400, "Missing required address fields");
   }
 

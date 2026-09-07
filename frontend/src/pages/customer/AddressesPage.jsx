@@ -10,7 +10,7 @@ const emptyForm = {
   addressLine2: "",
   city: "",
   postalCode: "",
-  country: "United Kingdom",
+  country: "Nepal",
   isDefault: false
 };
 
@@ -47,7 +47,7 @@ function AddressesPage() {
       addressLine2: addr.addressLine2 || "",
       city:         addr.city         || "",
       postalCode:   addr.postalCode   || "",
-      country:      addr.country      || "United Kingdom",
+      country:      addr.country      || "Nepal",
       isDefault:    addr.isDefault    || false
     });
     setEditId(addr.id);
@@ -334,7 +334,7 @@ function AddressesPage() {
                   value={form.country}
                   onChange={(e) => setForm((p) => ({ ...p, country: e.target.value }))}
                 >
-                  {["United Kingdom","United States","France","Germany","Italy","Spain","Netherlands","Australia","Canada"].map((c) => (
+                  {["Nepal","India","United Kingdom","United States","France","Germany","Italy","Spain","Netherlands","Australia","Canada"].map((c) => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>

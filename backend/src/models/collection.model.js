@@ -1,4 +1,3 @@
-import { Col } from "sequelize/lib/utils";
 import sequelize from "../db/index.js"
 import { DataTypes } from "sequelize"
 

@@ -1,13 +1,42 @@
-import { Op } from "sequelize";
+import { Op, fn, col } from "sequelize";
 import sequelize from "../db/index.js";
 import Product from "../models/product.model.js";
 import ProductVariant from "../models/productVariant.model.js";
 import Category from "../models/category.model.js";
 import Collection from "../models/collection.model.js";
+import Review from "../models/review.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { slugify } from "../utils/slugify.js";
+
+// Compute { avgRating, reviewCount } (APPROVED reviews only) for a set of product ids.
+const getRatingMap = async (productIds) => {
+  if (productIds.length === 0) return {};
+  const rows = await Review.findAll({
+    attributes: [
+      "productId",
+      [fn("AVG", col("rating")), "avgRating"],
+      [fn("COUNT", col("id")), "reviewCount"]
+    ],
+    where: { productId: { [Op.in]: productIds }, status: "APPROVED" },
+    group: ["productId"],
+    raw: true
+  });
+  return Object.fromEntries(
+    rows.map((r) => [
+      r.productId,
+      { avgRating: Math.round(Number(r.avgRating) * 10) / 10, reviewCount: Number(r.reviewCount) }
+    ])
+  );
+};
+
+const attachRatings = (products, ratingMap) =>
+  products.map((p) => {
+    const plain = typeof p.toJSON === "function" ? p.toJSON() : p;
+    const r = ratingMap[plain.id] || { avgRating: 0, reviewCount: 0 };
+    return { ...plain, avgRating: r.avgRating, reviewCount: r.reviewCount };
+  });
 
 const getProducts = asyncHandler(async (req, res) => {
   const {
@@ -95,11 +124,13 @@ const getProducts = asyncHandler(async (req, res) => {
     distinct: true // Required when counting with hasMany associations
   });
 
+  const ratingMap = await getRatingMap(products.map((p) => p.id));
+
   return res.status(200).json(
     new ApiResponse(
       200,
       {
-        products,
+        products: attachRatings(products, ratingMap),
         pagination: {
           totalItems: count,
           totalPages: Math.ceil(count / parsedLimit),
@@ -125,6 +156,42 @@ const getProductBySlug = asyncHandler(async (req, res) => {
     include: [
       { model: Category, as: "category", attributes: ["name", "slug"] },
       { model: Collection, as: "collection", attributes: ["name", "slug"] },
+      { model: ProductVariant, as: "variants" }
+    ]
+  });
+
+  if (!product) {
+    throw new ApiError(404, "Product not found");
+  }
+
+  const ratingMap = await getRatingMap([product.id]);
+  const [withRating] = attachRatings([product], ratingMap);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, withRating, "Product fetched successfully"));
+});
+
+// Admin: accept image uploads, return their public URLs.
+const uploadProductImages = asyncHandler(async (req, res) => {
+  if (!req.files || req.files.length === 0) {
+    throw new ApiError(400, "No image files received");
+  }
+  // Relative paths — the SPA proxies /uploads to the API in dev; set an absolute
+  // ASSET_BASE_URL in production if the API and web app are on different hosts.
+  const base = (process.env.ASSET_BASE_URL || "").replace(/\/$/, "");
+  const urls = req.files.map((f) => `${base}/uploads/${f.filename}`);
+  return res.status(201).json(new ApiResponse(201, { urls }, "Images uploaded"));
+});
+
+// Admin: fetch a single product by primary key regardless of status (incl. soft-deleted),
+// with everything the edit form needs.
+const getProductByIdForAdmin = asyncHandler(async (req, res) => {
+  const product = await Product.findByPk(req.params.id, {
+    paranoid: false,
+    include: [
+      { model: Category, as: "category", attributes: ["id", "name", "slug"] },
+      { model: Collection, as: "collection", attributes: ["id", "name", "slug"] },
       { model: ProductVariant, as: "variants" }
     ]
   });
@@ -236,7 +303,9 @@ const updateProduct = asyncHandler(async (req, res) => {
     material,
     skuPrefix,
     images,
-    status
+    status,
+    variants,          // optional: full desired variant list ({ id?, size, colorName, colorHex, sku, stockQuantity, priceOverride })
+    deleteVariantIds   // optional: explicit ids to remove
   } = req.body;
 
   const product = await Product.findByPk(id);
@@ -280,7 +349,60 @@ const updateProduct = asyncHandler(async (req, res) => {
     }
   }
 
-  await product.update(updates);
+  await sequelize.transaction(async (t) => {
+    await product.update(updates, { transaction: t });
+
+    // Variant sync — only touched when the caller sends a `variants` array.
+    if (Array.isArray(variants)) {
+      const existingVariants = await ProductVariant.findAll({
+        where: { productId: id },
+        transaction: t
+      });
+      const existingIds = new Set(existingVariants.map((v) => v.id));
+      const keepIds = new Set(variants.filter((v) => v.id).map((v) => v.id));
+
+      // Remove variants dropped from the list (or explicitly named in deleteVariantIds).
+      const toDelete = [
+        ...existingVariants.filter((v) => !keepIds.has(v.id)).map((v) => v.id),
+        ...(Array.isArray(deleteVariantIds) ? deleteVariantIds : [])
+      ];
+      if (toDelete.length > 0) {
+        await ProductVariant.destroy({ where: { id: toDelete, productId: id }, transaction: t });
+      }
+
+      // Upsert the rest.
+      for (const v of variants) {
+        if (v.id && existingIds.has(v.id)) {
+          await ProductVariant.update(
+            {
+              size: v.size,
+              colorName: v.colorName,
+              colorHex: v.colorHex,
+              sku: v.sku,
+              stockQuantity: v.stockQuantity,
+              priceOverride: v.priceOverride ?? null
+            },
+            { where: { id: v.id, productId: id }, transaction: t }
+          );
+        } else {
+          await ProductVariant.create(
+            {
+              productId: id,
+              size: v.size,
+              colorName: v.colorName,
+              colorHex: v.colorHex,
+              sku: v.sku,
+              stockQuantity: v.stockQuantity ?? 0,
+              priceOverride: v.priceOverride ?? null
+            },
+            { transaction: t }
+          );
+        }
+      }
+    } else if (Array.isArray(deleteVariantIds) && deleteVariantIds.length > 0) {
+      await ProductVariant.destroy({ where: { id: deleteVariantIds, productId: id }, transaction: t });
+    }
+  });
 
   // Fetch updated product with variants
   const updatedProduct = await Product.findByPk(id, {
@@ -311,7 +433,9 @@ const deleteProduct = asyncHandler(async (req, res) => {
 export {
   getProducts,
   getProductBySlug,
+  getProductByIdForAdmin,
   createProduct,
   updateProduct,
-  deleteProduct
+  deleteProduct,
+  uploadProductImages
 };

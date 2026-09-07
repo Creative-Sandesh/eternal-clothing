@@ -35,6 +35,20 @@ const Order = sequelize.define(
             defaultValue: "PENDING",
         },
 
+        subtotalAmount: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: false,
+            defaultValue: 0,
+            field: "subtotal_amount",
+        },
+
+        taxAmount: {
+            type: DataTypes.DECIMAL(12, 2),
+            allowNull: false,
+            defaultValue: 0,
+            field: "tax_amount",
+        },
+
         totalAmount: {
             type: DataTypes.DECIMAL(12, 2),
             allowNull: false,
@@ -82,7 +96,6 @@ const Order = sequelize.define(
     {
         tableName: "orders",
         timestamps: true,
-        updatedAt: false,
         underscored: true,
     }
 );

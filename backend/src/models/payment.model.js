@@ -22,9 +22,17 @@ const Payment = sequelize.define(
             field: "payment_method",
         },
 
+        // Gateway that will settle this payment: MOCK | COD | ESEWA | KHALTI | CARD
+        provider: {
+            type: DataTypes.STRING(20),
+            allowNull: false,
+            defaultValue: "MOCK",
+        },
+
+        // Null until the gateway returns a reference (e.g. after redirect/verify).
         transactionId: {
             type: DataTypes.STRING(255),
-            allowNull: false,
+            allowNull: true,
             field: "transaction_id",
         },
 

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useMoney } from "../../context/SettingsContext";
 import { useNavigate } from "react-router-dom";
 import { FiSearch, FiDownload, FiEye, FiPrinter, FiRefreshCw, FiCalendar } from "react-icons/fi";
 import { orderApi } from "../../services/api";
@@ -24,6 +25,7 @@ const tabs = [
 ];
 
 function OrdersListPage() {
+  const money = useMoney();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("all");
   const [search, setSearch] = useState("");
@@ -161,7 +163,7 @@ function OrdersListPage() {
                   <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
                     {order.items.length} item{order.items.length !== 1 ? "s" : ""}
                   </td>
-                  <td className="px-4 py-3 font-semibold text-gray-900">£{order.total.toFixed(2)}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-900">{money(order.total)}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${statusColors[order.status]}`}>
                       {order.status}

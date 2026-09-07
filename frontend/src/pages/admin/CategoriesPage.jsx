@@ -10,6 +10,29 @@ function CategoriesPage() {
   const [editingId, setEditingId] = useState(null);
   const [newCategory, setNewCategory] = useState({ name: "", slug: "", status: "Active" });
   const [editValues, setEditValues] = useState({});
+  const [dragIndex, setDragIndex] = useState(null);
+
+  const onDragStart = (i) => setDragIndex(i);
+  const onDragOver = (e, i) => {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === i) return;
+    setCategories((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(dragIndex, 1);
+      next.splice(i, 0, moved);
+      return next;
+    });
+    setDragIndex(i);
+  };
+  const onDrop = async () => {
+    setDragIndex(null);
+    try {
+      await categoryApi.reorder(categories.map((c) => c.id));
+    } catch (err) {
+      console.error("Failed to save order", err);
+      fetchCategories();
+    }
+  };
 
   const fetchCategories = async () => {
     try {
@@ -120,7 +143,7 @@ function CategoriesPage() {
   }
       <div className="flex items-center gap-2 px-4 py-2.5 bg-[#f0ebe2]/50 border border-[#c9b99a]/30 rounded-lg text-sm text-[#8c8277]">
         <FiMove size={14} />
-        Drag rows to reorder categories — order is reflected on the storefront
+        Drag the handle to reorder categories — the order is saved and reflected on the storefront
       </div>
 
       {
@@ -186,6 +209,7 @@ function CategoriesPage() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-100 bg-gray-50/50">
+              <th className="w-8 px-2 py-3" />
               <th className="text-left px-5 py-3 text-xs font-semibold text-[#8c8277] uppercase tracking-wider">Name</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-[#8c8277] uppercase tracking-wider">Slug</th>
               <th className="text-left px-5 py-3 text-xs font-semibold text-[#8c8277] uppercase tracking-wider">Products</th>
@@ -194,7 +218,21 @@ function CategoriesPage() {
             </tr>
           </thead>
           <tbody>
-            {categories.map((cat, i) => <tr key={cat.id} className={`border-b border-gray-50 last:border-0 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/20"}`}>
+            {categories.map((cat, i) => <tr
+                key={cat.id}
+                onDragOver={(e) => onDragOver(e, i)}
+                onDrop={onDrop}
+                className={`border-b border-gray-50 last:border-0 ${dragIndex === i ? "bg-[#f0ebe2]" : i % 2 === 0 ? "bg-white" : "bg-gray-50/20"}`}
+              >
+                <td
+                  className="px-2 py-3 text-center text-[#c9b99a] cursor-grab active:cursor-grabbing"
+                  draggable={editingId !== cat.id}
+                  onDragStart={() => onDragStart(i)}
+                  onDragEnd={() => setDragIndex(null)}
+                  title="Drag to reorder"
+                >
+                  <FiMove size={13} className="inline" />
+                </td>
                 {editingId === cat.id ? <>
                     <td className="px-5 py-3">
                       <input

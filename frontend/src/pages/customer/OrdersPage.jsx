@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useMoney } from "../../context/SettingsContext";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiPackage, FiChevronRight, FiLoader } from "react-icons/fi";
@@ -23,6 +24,7 @@ const statusStyles = {
 };
 
 function OrdersPage() {
+  const money = useMoney();
   const [activeFilter, setActiveFilter] = useState("all");
   const [orders, setOrders]             = useState([]);
   const [loading, setLoading]           = useState(true);
@@ -145,7 +147,7 @@ function OrdersPage() {
                       {order.status}
                     </span>
                     <span className="font-display text-xl" style={{ color: "#0a0a0a" }}>
-                      £{Number(order.totalAmount || 0).toFixed(2)}
+                      {money(Number(order.totalAmount || 0))}
                     </span>
                   </div>
                 </div>

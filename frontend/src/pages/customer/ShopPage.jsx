@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { useMoney } from "../../context/SettingsContext";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiHeart, FiFilter, FiX, FiGrid, FiList, FiChevronDown, FiChevronUp } from "react-icons/fi";
@@ -71,6 +72,7 @@ function FilterSection({
     </div>;
 }
 function ShopPage() {
+  const money = useMoney();
   const [searchParams] = useSearchParams();
   const [sortBy, setSortBy] = useState("featured");
   const [viewMode, setViewMode] = useState("grid3");
@@ -292,8 +294,8 @@ function ShopPage() {
   >
         <div className="space-y-3">
           <div className="flex items-center justify-between text-sm text-eternal-stone">
-            <span>£{priceRange[0]}</span>
-            <span>£{priceRange[1]}</span>
+            <span>{money(priceRange[0])}</span>
+            <span>{money(priceRange[1])}</span>
           </div>
           <input
     type="range"
@@ -548,9 +550,9 @@ function ShopPage() {
                             </div>
                             <div className="flex items-center justify-between mt-4">
                               <div className="flex items-center gap-2">
-                                {isSale && <span className="text-sm text-eternal-stone line-through">£{product.price}</span>}
+                                {isSale && <span className="text-sm text-eternal-stone line-through">{money(product.price)}</span>}
                                 <span className={`text-sm font-medium ${isSale ? "text-red-600" : "text-eternal-black"}`}>
-                                  £{displayPrice}
+                                  {money(displayPrice)}
                                 </span>
                               </div>
                               <button
@@ -637,9 +639,9 @@ function ShopPage() {
                             </h3>
                           </Link>
                           <div className="flex items-center gap-2 mt-1">
-                            {isSale && <span className="text-xs text-eternal-stone line-through">£{product.price}</span>}
+                            {isSale && <span className="text-xs text-eternal-stone line-through">{money(product.price)}</span>}
                             <span className={`text-sm ${isSale ? "text-red-600 font-medium" : "text-eternal-black"}`}>
-                              £{displayPrice}
+                              {money(displayPrice)}
                             </span>
                           </div>
                           {product.rating != null && <StarRating rating={product.rating} count={product.reviewCount ?? 0} />}

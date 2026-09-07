@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useMoney } from "../../context/SettingsContext";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiPlus, FiSearch, FiGrid, FiList, FiEdit2, FiTrash2, FiStar, FiChevronLeft, FiChevronRight } from "react-icons/fi";
@@ -13,6 +14,7 @@ const stockBadge = (inStock, idx) => {
   return <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-medium">In Stock ({stock})</span>;
 };
 function ProductsListPage() {
+  const money = useMoney();
   const navigate = useNavigate();
   const [view, setView] = useState("table");
   const [search, setSearch] = useState("");
@@ -28,15 +30,21 @@ function ProductsListPage() {
     let active = true;
     const fetchProducts = async () => {
       try {
-        const res = await productApi.getProducts();
+        const res = await productApi.getProducts({ limit: 100 });
         if (!active) return;
-        setProducts(res.data);
+        setProducts(res.data?.products ?? []);
         setLoading(false);
       } catch (err) {
         console.error("Failed to load products", err);
         setLoading(false);
       }
     };
+    fetchProducts();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const handleDeleteProduct = async (id) => {
     try {
       await productApi.deleteProduct(id);
@@ -191,7 +199,7 @@ function ProductsListPage() {
                     </td>
                     <td className="px-4 py-3 text-gray-500 hidden md:table-cell font-mono text-xs">{product.sku}</td>
                     <td className="px-4 py-3 text-gray-600 hidden lg:table-cell">{product.category}</td>
-                    <td className="px-4 py-3 font-semibold text-gray-900">£{product.price}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900">{money(product.price)}</td>
                     <td className="px-4 py-3 hidden sm:table-cell">{stockBadge(product.inStock, i)}</td>
                     <td className="px-4 py-3 hidden lg:table-cell">
                       <div className="flex items-center gap-1">
@@ -284,7 +292,7 @@ function ProductsListPage() {
               <div className="p-3">
                 <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
                 <div className="flex items-center justify-between mt-1">
-                  <span className="font-semibold text-gray-900">£{product.price}</span>
+                  <span className="font-semibold text-gray-900">{money(product.price)}</span>
                   {stockBadge(product.inStock, i)}
                 </div>
               </div>

@@ -1,3 +1,4 @@
+import { fn, col } from "sequelize";
 import Collection from "../models/collection.model.js";
 import Product from "../models/product.model.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -6,10 +7,23 @@ import { asyncHandler } from "../utils/asyncHandler.js";
 import { slugify } from "../utils/slugify.js";
 
 const getCollections = asyncHandler(async (req, res) => {
-  const collections = await Collection.findAll();
+  const collections = await Collection.findAll({ order: [["name", "ASC"]] });
+
+  const counts = await Product.findAll({
+    attributes: ["collectionId", [fn("COUNT", col("id")), "count"]],
+    group: ["collectionId"],
+    raw: true
+  });
+  const countMap = Object.fromEntries(counts.map((c) => [c.collectionId, Number(c.count)]));
+
+  const withCounts = collections.map((c) => ({
+    ...c.toJSON(),
+    productCount: countMap[c.id] ?? 0
+  }));
+
   return res
     .status(200)
-    .json(new ApiResponse(200, collections, "Collections fetched successfully"));
+    .json(new ApiResponse(200, withCounts, "Collections fetched successfully"));
 });
 
 const getCollectionBySlug = asyncHandler(async (req, res) => {

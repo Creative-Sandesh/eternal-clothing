@@ -57,6 +57,38 @@ const User = sequelize.define("User", {
         defaultValue: 0,
         field: "loyalty_points_balance",
     },
+
+    refreshToken: {
+        type: DataTypes.STRING(500),
+        allowNull: true,
+        field: "refresh_token",
+    },
+
+    resetPasswordToken: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+        field: "reset_password_token",
+    },
+
+    resetPasswordExpires: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: "reset_password_expires",
+    },
+
+    // Referral programme
+    referralCode: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        unique: true,
+        field: "referral_code",
+    },
+
+    referredBy: {
+        type: DataTypes.UUID,
+        allowNull: true,
+        field: "referred_by",
+    },
 },
     {
         tableName: "users",

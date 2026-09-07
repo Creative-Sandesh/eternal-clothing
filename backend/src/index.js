@@ -14,4 +14,5 @@ ConnectDB()
 })
 .catch((error) => {
     console.log("SQL connection failed ", error)
+    process.exit(1)
 })

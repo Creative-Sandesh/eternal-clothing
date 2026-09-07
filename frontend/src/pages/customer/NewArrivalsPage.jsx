@@ -1,9 +1,11 @@
 import { Link } from "react-router-dom";
+import { useMoney } from "../../context/SettingsContext";
 import { motion } from "framer-motion";
 import { FiHeart } from "react-icons/fi";
 import { productApi, normalizeProduct } from "../../services/api";
 import { useState, useEffect } from "react";
 function NewArrivalsPage() {
+  const money = useMoney();
   const [newProducts, setNewProducts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -96,7 +98,7 @@ function NewArrivalsPage() {
               <Link to={`/product/${product.id}`} className="block">
                 <p className="text-[#8c8277] text-[10px] tracking-widest uppercase mb-1">{product.category}</p>
                 <h3 className="text-[#0a0a0a] text-sm font-medium leading-snug mb-1 hover:text-[#2d4a3e] transition-colors">{product.name}</h3>
-                <p className="text-[#0a0a0a] text-sm">£{product.price}</p>
+                <p className="text-[#0a0a0a] text-sm">{money(product.price)}</p>
               </Link>
             </motion.div>)}
         </div>

@@ -3,8 +3,11 @@ import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiX, FiShoppingBag, FiPlus, FiMinus, FiTrash2, FiArrowRight } from "react-icons/fi";
 import { useCart } from "@/context/CartContext";
+import { useMoney, useSettings } from "@/context/SettingsContext";
 function CartDrawer() {
   const { items, isOpen, closeCart, removeItem, updateQuantity, total, count } = useCart();
+  const money = useMoney();
+  const { freeShippingThreshold } = useSettings();
   useEffect(() => {
     if (isOpen) document.body.style.overflow = "hidden";
     else document.body.style.overflow = "";
@@ -12,7 +15,9 @@ function CartDrawer() {
       document.body.style.overflow = "";
     };
   }, [isOpen]);
-  const formattedTotal = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(total);
+  const formattedTotal = money(total);
+  const threshold = freeShippingThreshold || 0;
+  const progress = threshold > 0 ? Math.min((total / threshold) * 100, 100) : 100;
   return <AnimatePresence>
       {isOpen && <>
           {
@@ -133,7 +138,7 @@ function CartDrawer() {
     /* Price */
   }
                             <p className="text-sm font-medium text-[#0a0a0a]">
-                              {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(item.price * item.quantity)}
+                              {money(item.price * item.quantity)}
                             </p>
                           </div>
                         </div>
@@ -148,22 +153,26 @@ function CartDrawer() {
                   {
     /* Shipping note */
   }
-                  <div className="flex items-center justify-between text-xs text-[#8c8277]">
-                    <span>Free shipping on orders over $200</span>
-                    {total >= 200 ? <span className="text-[#2d4a3e] font-medium">Qualified</span> : <span>{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(200 - total)} away</span>}
-                  </div>
+                  {threshold > 0 && (
+                    <>
+                      <div className="flex items-center justify-between text-xs text-[#8c8277]">
+                        <span>Free shipping on orders over {money(threshold)}</span>
+                        {total >= threshold ? <span className="text-[#2d4a3e] font-medium">Qualified</span> : <span>{money(threshold - total)} away</span>}
+                      </div>
 
-                  {
+                      {
     /* Progress bar */
   }
-                  <div className="h-px bg-[#0a0a0a]/10 relative overflow-hidden">
-                    <motion.div
+                      <div className="h-px bg-[#0a0a0a]/10 relative overflow-hidden">
+                        <motion.div
     className="absolute left-0 top-0 h-full bg-[#2d4a3e]"
     initial={{ width: 0 }}
-    animate={{ width: `${Math.min(total / 200 * 100, 100)}%` }}
+    animate={{ width: `${progress}%` }}
     transition={{ duration: 0.5, ease: "easeOut" }}
   />
-                  </div>
+                      </div>
+                    </>
+                  )}
 
                   {
     /* Subtotal */

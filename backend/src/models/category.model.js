@@ -31,6 +31,13 @@ const Category = sequelize.define(
             allowNull: true,
             field: "image_url",
         },
+
+        sortOrder: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0,
+            field: "sort_order",
+        },
     },
     {
         tableName: "categories",

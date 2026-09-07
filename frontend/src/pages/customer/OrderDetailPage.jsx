@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useMoney } from "../../context/SettingsContext";
 import { Link, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiArrowLeft, FiPackage, FiTruck, FiCheck, FiMapPin, FiCreditCard, FiHelpCircle, FiRotateCcw } from "react-icons/fi";
@@ -33,6 +34,7 @@ const statusStyles = {
 };
 
 function OrderDetailPage() {
+  const money = useMoney();
   const { id } = useParams();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -247,10 +249,10 @@ function OrderDetailPage() {
             </div>
             <div className="flex-shrink-0 text-right">
               <p className="text-sm font-semibold" style={{ color: "#0a0a0a", fontFamily: "Manrope, sans-serif" }}>
-                £{(item.price * item.quantity).toFixed(2)}
+                {money((item.price * item.quantity))}
               </p>
               <p className="text-xs mt-0.5" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>
-                £{item.price.toFixed(2)} each
+                {money(item.price)} each
               </p>
             </div>
           </div>)}
@@ -292,9 +294,9 @@ function OrderDetailPage() {
           </div>
           <div className="space-y-2">
             {[
-    { label: "Subtotal", value: `\xA3${order.subtotal.toFixed(2)}` },
-    { label: "Shipping", value: order.shipping === 0 ? "Free" : `\xA3${order.shipping.toFixed(2)}` },
-    { label: "Tax", value: `\xA3${order.tax.toFixed(2)}` }
+    { label: "Subtotal", value: money(order.subtotal) },
+    { label: "Shipping", value: order.shipping === 0 ? "Free" : money(order.shipping) },
+    { label: "Tax", value: money(order.tax) }
   ].map((row) => <div key={row.label} className="flex justify-between text-sm" style={{ fontFamily: "Manrope, sans-serif" }}>
                 <span style={{ color: "#8c8277" }}>{row.label}</span>
                 <span style={{ color: "#0a0a0a" }}>{row.value}</span>
@@ -304,7 +306,7 @@ function OrderDetailPage() {
     style={{ borderColor: "#f0ebe2", fontFamily: "Manrope, sans-serif" }}
   >
               <span style={{ color: "#0a0a0a" }}>Total</span>
-              <span style={{ color: "#0a0a0a" }}>£{order.total.toFixed(2)}</span>
+              <span style={{ color: "#0a0a0a" }}>{money(order.total)}</span>
             </div>
           </div>
         </div>

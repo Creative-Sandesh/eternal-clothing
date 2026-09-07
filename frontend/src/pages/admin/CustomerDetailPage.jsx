@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useMoney } from "../../context/SettingsContext";
 import { useParams, Link } from "react-router-dom";
 import { FiArrowLeft, FiEdit2, FiStar, FiMapPin, FiMail, FiPhone, FiShoppingBag, FiAward, FiMessageSquare, FiSend } from "react-icons/fi";
 import { userApi, orderApi } from "../../services/api";
@@ -10,11 +11,6 @@ const tierColors = {
   Platinum: "bg-[#2d4a3e]/10 text-[#2d4a3e]"
 };
 
-const mockReviews = [
-  { id: "1", product: "Oversized Cotton Poplin Shirt", rating: 5, comment: "Exceptional quality. The fabric is incredibly luxurious.", date: "2024-12-10" },
-  { id: "2", product: "Relaxed Wool Trouser", rating: 4, comment: "Great fit and finish. Highly recommend.", date: "2024-11-02" }
-];
-
 const mockActivity = [
   { id: "1", event: "Placed order", time: "Recent", icon: <FiShoppingBag size={12} /> },
   { id: "2", event: "Left a review", time: "Recent", icon: <FiStar size={12} /> },
@@ -22,14 +18,14 @@ const mockActivity = [
 ];
 
 function CustomerDetailPage() {
+  const money = useMoney();
   const { id } = useParams();
   const [customer, setCustomer] = useState(null);
   const [customerOrders, setCustomerOrders] = useState([]);
+  const [addresses, setAddresses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState("");
-  const [notes, setNotes] = useState([
-    { text: "VIP customer account.", date: new Date().toISOString().split("T")[0] }
-  ]);
+  const [notes, setNotes] = useState([]);
 
   useEffect(() => {
     let active = true;
@@ -43,31 +39,50 @@ function CustomerDetailPage() {
         if (!active) return;
         if (cRes?.data) {
           const c = cRes.data;
+          const points = Number(c.loyaltyPointsBalance ?? c.loyaltyPoints ?? 0);
           setCustomer({
             id: c.id,
             name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || "Customer",
             email: c.email || "",
-            phone: c.phone || "N/A",
-            tier: c.role === "ADMIN" ? "Platinum" : "Silver",
+            phone: c.phoneNumber || c.phone || "N/A",
+            tier: points >= 1000 ? "Platinum" : points >= 500 ? "Gold" : points >= 100 ? "Silver" : "Bronze",
             joinedAt: new Date(c.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
             totalOrders: Number(c.orderCount || 0),
             totalSpent: Number(c.totalSpent || 0),
-            loyaltyPoints: Number(c.loyaltyPoints || 150),
+            loyaltyPoints: points,
             tags: [c.role || "CUSTOMER"],
-            address: { line1: "123 High Street", city: "London", zip: "EC1A 1BB", country: "United Kingdom" }
+            address: null
           });
         }
-        const filteredOrders = (oRes?.data || [])
-          .filter(o => String(o.userId) === String(id))
-          .map(o => ({
-            id: o.id,
-            orderNumber: o.orderNumber || `ORD-${o.id}`,
-            createdAt: new Date(o.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
-            items: o.items || [],
-            total: Number(o.totalAmount || o.total || 0),
-            status: (o.status || "pending").toLowerCase()
-          }));
-        setCustomerOrders(filteredOrders);
+        const mine = (oRes?.data || []).filter(o => String(o.userId) === String(id));
+        setCustomerOrders(mine.map(o => ({
+          id: o.id,
+          orderNumber: o.orderNumber || `ORD-${o.id}`,
+          createdAt: new Date(o.createdAt).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+          items: o.items || [],
+          total: Number(o.totalAmount || o.total || 0),
+          status: (o.status || "pending").toLowerCase()
+        })));
+
+        // Derive unique shipping addresses from the customer's orders.
+        const seen = new Set();
+        const addrs = [];
+        for (const o of mine) {
+          const a = o.shippingAddress;
+          if (!a) continue;
+          const key = `${a.addressLine1}|${a.city}|${a.postalCode}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          addrs.push({
+            line1: a.addressLine1,
+            line2: a.addressLine2,
+            city: a.city,
+            state: a.state,
+            zip: a.postalCode,
+            country: a.country
+          });
+        }
+        setAddresses(addrs);
       } catch (err) {
         console.error("Failed to load customer detail", err);
       } finally {
@@ -121,8 +136,8 @@ function CustomerDetailPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
     { label: "Total Orders", value: customer.totalOrders },
-    { label: "Total Spent", value: `\xA3${customer.totalSpent.toLocaleString()}` },
-    { label: "Avg Order Value", value: `\xA3${avgOrderValue}` },
+    { label: "Total Spent", value: money(customer.totalSpent.toLocaleString()) },
+    { label: "Avg Order Value", value: money(avgOrderValue) },
     { label: "Loyalty Points", value: customer.loyaltyPoints.toLocaleString() }
   ].map((s) => <div key={s.label} className="bg-white border border-gray-100 rounded-xl p-5">
             <p className="text-2xl font-display text-[#0a0a0a]">{s.value}</p>
@@ -156,7 +171,7 @@ function CustomerDetailPage() {
                       <td className="px-5 py-3 font-mono text-xs text-[#0a0a0a] font-medium">{o.orderNumber}</td>
                       <td className="px-5 py-3 text-[#8c8277] text-xs">{o.createdAt}</td>
                       <td className="px-5 py-3 text-[#8c8277]">{o.items?.length ?? "\u2014"}</td>
-                      <td className="px-5 py-3 font-medium text-[#0a0a0a]">£{o.total.toLocaleString()}</td>
+                      <td className="px-5 py-3 font-medium text-[#0a0a0a]">{money(o.total.toLocaleString())}</td>
                       <td className="px-5 py-3">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${o.status === "delivered" ? "bg-[#2d4a3e]/10 text-[#2d4a3e]" : o.status === "processing" ? "bg-blue-50 text-blue-600" : o.status === "shipped" ? "bg-amber-50 text-amber-600" : "bg-gray-100 text-gray-500"}`}>
                           {o.status}
@@ -168,44 +183,26 @@ function CustomerDetailPage() {
           </div>
 
           {
-    /* Reviews */
-  }
-          <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100">
-              <p className="font-semibold text-sm text-[#0a0a0a]">Reviews</p>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {mockReviews.map((r) => <div key={r.id} className="px-5 py-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="font-medium text-sm text-[#0a0a0a]">{r.product}</p>
-                    <div className="flex items-center gap-0.5">
-                      {Array.from({ length: 5 }).map((_, i) => <FiStar key={i} size={12} className={i < r.rating ? "text-[#c9b99a] fill-current" : "text-gray-200"} />)}
-                    </div>
-                  </div>
-                  <p className="text-sm text-[#8c8277]">{r.comment}</p>
-                  <p className="text-xs text-gray-400 mt-1">{r.date}</p>
-                </div>)}
-            </div>
-          </div>
-
-          {
-    /* Addresses */
+    /* Addresses (derived from the customer's orders) */
   }
           <div className="bg-white border border-gray-100 rounded-xl p-5">
-            <p className="font-semibold text-sm text-[#0a0a0a] mb-3">Addresses on File</p>
-            <div className="flex items-start gap-3 p-4 border border-gray-100 rounded-lg">
-              <FiMapPin size={16} className="text-[#8c8277] mt-0.5 flex-shrink-0" />
-              <div className="text-sm text-[#8c8277]">
-                <p className="text-[#0a0a0a] font-medium">Primary</p>
-                <p>{customer.address.line1}</p>
-                <p>{customer.address.city}{customer.address.state ? `, ${customer.address.state}` : ""} {customer.address.zip}</p>
-                <p>{customer.address.country}</p>
-              </div>
-            </div>
+            <p className="font-semibold text-sm text-[#0a0a0a] mb-3">Addresses from Orders</p>
+            {addresses.length === 0 ? <p className="text-sm text-[#8c8277]">No shipping addresses on record.</p>
+            : <div className="space-y-3">
+              {addresses.map((a, i) => <div key={i} className="flex items-start gap-3 p-4 border border-gray-100 rounded-lg">
+                <FiMapPin size={16} className="text-[#8c8277] mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-[#8c8277]">
+                  <p>{a.line1}</p>
+                  {a.line2 && <p>{a.line2}</p>}
+                  <p>{a.city}{a.state ? `, ${a.state}` : ""} {a.zip}</p>
+                  <p>{a.country}</p>
+                </div>
+              </div>)}
+            </div>}
           </div>
 
           {
-    /* Notes */
+    /* Notes (local — no backend model) */
   }
           <div className="bg-white border border-gray-100 rounded-xl p-5">
             <p className="font-semibold text-sm text-[#0a0a0a] mb-3">Internal Notes</p>

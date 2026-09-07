@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useMoney } from "../../context/SettingsContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiPlus, FiEdit2, FiTrash2, FiGrid, FiList, FiX, FiImage, FiSave } from "react-icons/fi";
 import { collectionApi, productApi } from "../../services/api";
@@ -10,6 +11,7 @@ const statusColors = {
 };
 
 function CollectionsAdminPage() {
+  const money = useMoney();
   const [collections, setCollections] = useState([]);
   const [productsList, setProductsList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -239,7 +241,7 @@ function CollectionsAdminPage() {
     className="rounded border-gray-300 text-[#2d4a3e]"
   />
                         <span className="text-xs text-[#0a0a0a] truncate">{p.name}</span>
-                        <span className="text-xs text-[#8c8277] ml-auto flex-shrink-0">£{p.price}</span>
+                        <span className="text-xs text-[#8c8277] ml-auto flex-shrink-0">{money(p.price)}</span>
                       </label>)}
                   </div>
                 </div>

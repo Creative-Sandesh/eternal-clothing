@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
+import { useMoney } from "../../context/SettingsContext";
 import { Link, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { FiHeart } from "react-icons/fi";
 import { collectionApi, productApi, normalizeProduct } from "../../services/api";
 function CollectionDetailPage() {
+  const money = useMoney();
   const { slug } = useParams();
   const [sort, setSort] = useState("featured");
   const [collection, setCollection] = useState(null);
@@ -134,7 +136,7 @@ function CollectionDetailPage() {
                 <Link to={`/product/${product.id}`}>
                   <p className="text-[#8c8277] text-[10px] tracking-widest uppercase mb-1">{product.category}</p>
                   <h3 className="text-[#0a0a0a] text-sm font-medium leading-snug hover:text-[#2d4a3e] transition-colors">{product.name}</h3>
-                  <p className="text-[#0a0a0a] text-sm mt-1">£{product.price}</p>
+                  <p className="text-[#0a0a0a] text-sm mt-1">{money(product.price)}</p>
                 </Link>
               </motion.div>)}
           </div>}

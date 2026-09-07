@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { getInventory, updateVariantStock } from "../controllers/inventory.controller.js";
+import { getInventory, getLowStock, updateVariantStock } from "../controllers/inventory.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { verifyAdmin } from "../middlewares/admin.middleware.js";
 
@@ -10,6 +10,7 @@ router.use(verifyJWT);
 router.use(verifyAdmin);
 
 router.route("/").get(getInventory);
+router.route("/low-stock").get(getLowStock);
 router.route("/:id").put(updateVariantStock);
 
 export default router;

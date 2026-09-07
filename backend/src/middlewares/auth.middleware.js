@@ -14,7 +14,7 @@ const verifyJWT = asyncHandler(async (req, res, next) => {
     const decodedToken = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
 
     const user = await User.findByPk(decodedToken.id, {
-      attributes: { exclude: ["passwordHash"] }
+      attributes: { exclude: ["passwordHash", "refreshToken", "resetPasswordToken", "resetPasswordExpires"] }
     });
 
     if (!user) {

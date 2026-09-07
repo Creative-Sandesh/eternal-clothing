@@ -7,7 +7,11 @@ import {
   Product,
   ProductVariant,
   Setting,
+  Banner,
+  Campaign,
+  NewsletterSubscriber,
 } from "./models/relation.js";
+import { ensureReferralCode } from "./utils/referral.js";
 
 // ─── Seed Data ───────────────────────────────────────────────────────────────
 
@@ -446,12 +450,30 @@ const productsData = [
 const defaultSettings = [
   { key: "store_name", value: "Eternal Clothing" },
   { key: "store_email", value: "hello@eternal.com" },
-  { key: "currency", value: "USD" },
-  { key: "shipping_fee_standard", value: 10 },
-  { key: "free_shipping_threshold", value: 100 },
+  { key: "currency", value: "NPR" },
+  { key: "shipping_fee_standard", value: 150 },
+  { key: "free_shipping_threshold", value: 10000 },
   { key: "tax_rate_percent", value: 0 },
   { key: "loyalty_points_per_dollar", value: 1 },
   { key: "loyalty_points_redemption_rate", value: 0.01 },
+  { key: "referral_reward_points", value: 200 },
+];
+
+const bannersData = [
+  { position: "TOP_BAR", title: "Free shipping on orders over रू10,000", ctaText: "Shop now", ctaLink: "/shop", isActive: true, sortOrder: 0 },
+  { position: "HERO", title: "The Winter Edit", content: "New arrivals — curated for the season", ctaText: "Explore", ctaLink: "/collections/essentials", isActive: true, sortOrder: 0 },
+  { position: "SALE", title: "Archive Sale", content: "Up to 30% off selected pieces", ctaText: "Shop the sale", ctaLink: "/sale", isActive: true, sortOrder: 0 },
+];
+
+const campaignsData = [
+  { name: "Welcome series", type: "EMAIL", status: "DRAFT", subject: "Welcome to Eternal", body: "<p>Thanks for joining. Here's 10% off your first order.</p>", audience: "SUBSCRIBERS" },
+  { name: "New arrivals announcement", type: "EMAIL", status: "DRAFT", subject: "Just landed: the Winter Edit", body: "<p>Discover the new season.</p>", audience: "CUSTOMERS" },
+];
+
+const subscribersData = [
+  { email: "amara.osei@example.com", source: "CHECKOUT" },
+  { email: "sofia.a@example.com", source: "WEBSITE" },
+  { email: "marcus.chen@example.com", source: "SOCIAL" },
 ];
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -504,6 +526,11 @@ const seed = async () => {
       console.log("   Created customer@eternal.com  (password: Customer@123)");
     } else {
       console.log("   customer@eternal.com already exists — skipping.");
+    }
+
+    // Ensure every user has a referral code
+    for (const u of await User.findAll()) {
+      await ensureReferralCode(u);
     }
 
     // ------------------------------------------------------------------
@@ -615,6 +642,23 @@ const seed = async () => {
     for (const s of defaultSettings) {
       await Setting.upsert({ key: s.key, value: s.value });
       console.log(`   Upserted → ${s.key}`);
+    }
+
+    // ------------------------------------------------------------------
+    // 6. Marketing (banners, campaigns, subscribers)
+    // ------------------------------------------------------------------
+    console.log("\n📣 Seeding marketing...");
+    for (const b of bannersData) {
+      const [, created] = await Banner.findOrCreate({ where: { position: b.position, title: b.title }, defaults: b });
+      console.log(`   ${created ? "Created" : "Exists "} banner → ${b.title}`);
+    }
+    for (const c of campaignsData) {
+      const [, created] = await Campaign.findOrCreate({ where: { name: c.name }, defaults: c });
+      console.log(`   ${created ? "Created" : "Exists "} campaign → ${c.name}`);
+    }
+    for (const s of subscribersData) {
+      const [, created] = await NewsletterSubscriber.findOrCreate({ where: { email: s.email }, defaults: s });
+      console.log(`   ${created ? "Created" : "Exists "} subscriber → ${s.email}`);
     }
 
     // ------------------------------------------------------------------

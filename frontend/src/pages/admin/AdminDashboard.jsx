@@ -1,14 +1,13 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
+import { useMoney } from "../../context/SettingsContext";
+import { currencySymbol, formatMoney } from "../../utils/money";
 import { motion } from "framer-motion";
 import {
   AreaChart,
   Area,
   LineChart,
   Line,
-  PieChart,
-  Pie,
-  Cell,
   ResponsiveContainer,
   XAxis,
   YAxis,
@@ -17,36 +16,46 @@ import {
 } from "recharts";
 import { FiTrendingUp, FiTrendingDown, FiArrowRight, FiAlertTriangle } from "react-icons/fi";
 import { analyticsApi } from "../../services/api";
-const sparkData = [
-  [40, 55, 48, 62, 58, 71, 68, 80, 76, 88],
-  [120, 145, 132, 158, 148, 172, 165, 195, 188, 210],
-  [280, 310, 295, 320, 305, 335, 318, 345, 330, 358],
-  [850, 920, 880, 960, 930, 1010, 980, 1050, 1020, 1080]
-];
-const lowStockProducts = [
-  { name: "Merino Crewneck Knit \u2014 Stone", sku: "ET-004-STN", stock: 3 },
-  { name: "Leather Chelsea Boot \u2014 Tan 42", sku: "ET-009-TAN", stock: 5 },
-  { name: "Cashmere Ribbed Beanie \u2014 Black", sku: "ET-008-BLK", stock: 7 },
-  { name: "Slim Straight Denim \u2014 30W", sku: "ET-006-30W", stock: 2 }
-];
+
 const statusColors = {
+  pending: "bg-amber-100 text-amber-700",
   processing: "bg-amber-100 text-amber-700",
-  confirmed: "bg-blue-100 text-blue-700",
   shipped: "bg-purple-100 text-purple-700",
   delivered: "bg-green-100 text-green-700",
-  cancelled: "bg-red-100 text-red-700",
-  refunded: "bg-gray-100 text-gray-600"
+  cancelled: "bg-red-100 text-red-700"
 };
-const CustomTooltip = ({ active, payload, label }) => {
+
+const shortDate = (s) => {
+  const d = new Date(s);
+  return isNaN(d) ? s : d.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+};
+
+const ChartTooltip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
   return <div className="bg-white border border-gray-100 rounded-lg px-3 py-2 shadow-lg text-xs">
-      <p className="font-semibold text-gray-700 mb-1">{label}</p>
+      <p className="font-semibold text-gray-700 mb-1">{shortDate(label)}</p>
       {payload.map((p) => <p key={p.name} style={{ color: p.color }}>
-          {p.name}: {typeof p.value === "number" && p.name === "revenue" ? `\xA3${p.value.toLocaleString()}` : p.name === "target" ? `\xA3${p.value.toLocaleString()}` : p.value}
+          {p.name}: {p.name === "revenue" ? formatMoney(p.value) : p.value}
         </p>)}
     </div>;
 };
+
+function Sparkline({ series }) {
+  const data = (series || []).map((pt, j) => ({ v: Number(pt.value) || 0, j }));
+  if (data.length === 0) return <div className="w-16 h-8" />;
+  return (
+    <div className="w-16 h-8">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data}>
+          <Line type="monotone" dataKey="v" stroke="#2d4a3e" strokeWidth={1.5} dot={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function AdminDashboard() {
+  const money = useMoney();
   const [chartMode, setChartMode] = useState("revenue");
   const [stats, setStats] = useState(null);
   const [salesHistory, setSalesHistory] = useState([]);
@@ -54,107 +63,99 @@ function AdminDashboard() {
 
   useEffect(() => {
     let active = true;
-    const fetchStats = async () => {
+    (async () => {
       try {
-        const res = await analyticsApi.getDashboard();
+        const [dash, sales] = await Promise.all([
+          analyticsApi.getDashboard(),
+          analyticsApi.getSales(30).catch(() => ({ data: {} }))
+        ]);
         if (!active) return;
-        setStats(res.data);
+        setStats(dash.data);
+        const daily = sales.data?.dailyRevenue ?? [];
+        setSalesHistory(daily.map((d) => ({
+          date: d.date,
+          revenue: Number(d.revenue) || 0,
+          orders: Number(d.transactions) || 0
+        })));
       } catch (err) {
-        console.error("AdminDashboard: failed to load stats", err);
+        console.error("AdminDashboard: failed to load", err);
       } finally {
         if (active) setLoading(false);
       }
-    };
-    fetchStats();
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    const fetchSales = async () => {
-      try {
-        const res = await analyticsApi.getSales(30);
-        if (!active) return;
-        const daily = res.data?.dailyRevenue ?? [];
-        if (daily.length > 0) {
-          const mapped = daily.map(d => ({
-            month: d.date,
-            revenue: Number(d.revenue),
-            orders: Number(d.transactions),
-            target: 0
-          }));
-          setSalesHistory(mapped);
-        }
-      } catch (err) {
-        console.error(err);
-      }
-    };
-    fetchSales();
+    })();
     return () => { active = false; };
   }, []);
 
   const totalRevenue = stats?.revenue?.total ?? 0;
   const totalOrders = stats?.orders?.total ?? 0;
   const activeCustomers = stats?.customers?.total ?? 0;
-  const avgOrderValue = totalOrders > 0 ? (totalRevenue / totalOrders) : 0;
+  const avgOrderValue = stats?.avgOrderValue ?? 0;
+  const spark = stats?.sparklines ?? {};
 
-  const liveStatsCards = [
+  const growth = stats?.revenue?.growthPercent ?? 0;
+  const cards = [
     {
       label: "Total Revenue",
-      value: `£${totalRevenue.toLocaleString()}`,
-      change: stats?.revenue?.growthPercent >= 0 ? `+${stats?.revenue?.growthPercent}%` : `${stats?.revenue?.growthPercent}%`,
-      trend: (stats?.revenue?.growthPercent ?? 0) >= 0 ? "up" : "down"
+      value: money(totalRevenue.toLocaleString()),
+      change: `${growth >= 0 ? "+" : ""}${growth}% MoM`,
+      trend: growth >= 0 ? "up" : "down",
+      series: spark.revenue
     },
     {
       label: "Total Orders",
       value: totalOrders.toLocaleString(),
-      change: stats?.orders?.newThisMonth ? `+${stats?.orders?.newThisMonth} new` : "0 new",
-      trend: "up"
+      change: `${stats?.orders?.newThisMonth ?? 0} this month`,
+      trend: "up",
+      series: spark.orders
     },
     {
       label: "Avg Order Value",
-      value: `£${avgOrderValue.toFixed(0)}`,
-      change: "--",
-      trend: "up"
+      value: money(avgOrderValue.toLocaleString(undefined, { maximumFractionDigits: 0 })),
+      change: "14-day trend",
+      trend: "up",
+      series: spark.avgOrderValue
     },
     {
-      label: "Active Customers",
+      label: "Customers",
       value: activeCustomers.toLocaleString(),
-      change: stats?.customers?.newThisMonth ? `+${stats?.customers?.newThisMonth} new` : "0 new",
-      trend: "up"
+      change: `${stats?.customers?.newThisMonth ?? 0} this month`,
+      trend: "up",
+      series: spark.customers
     }
   ];
 
-  const recentOrdersList = (stats?.recentOrders ?? []).map(o => ({
+  const recentOrders = (stats?.recentOrders ?? []).map((o) => ({
     id: o.id,
     orderNumber: o.orderNumber || `ORD-${o.id}`,
-    customerName: o.user ? `${o.user.firstName} ${o.user.lastName}` : "Guest Customer",
-    status: o.status ? o.status.toLowerCase() : "pending",
-    total: Number(o.totalAmount || o.total || 0)
+    customerName: o.user ? `${o.user.firstName} ${o.user.lastName}`.trim() : "Guest Customer",
+    status: (o.status || "pending").toLowerCase(),
+    total: Number(o.totalAmount || 0)
   }));
 
-  const topProductsList = (stats?.topProducts ?? []).map((tp, idx) => ({
-    name: `Variant ID: ${tp.productVariantId}`,
-    sales: Number(tp.totalSold || 0),
-    revenue: 0,
-    growth: 0
+  const topProducts = (stats?.topProducts ?? []).map((tp) => ({
+    name: tp.name || `Product ${tp.productId}`,
+    sales: Number(tp.totalSold || 0)
   }));
 
-  const chartData = salesHistory.length > 0 ? salesHistory : [
-    { month: "Jan", revenue: 0, orders: 0, target: 0 },
-    { month: "Feb", revenue: 0, orders: 0, target: 0 },
-    { month: "Mar", revenue: 0, orders: 0, target: 0 }
-  ];
-  return <div className="space-y-6">
-      {
-    /* Stats Row */
+  const lowStock = (stats?.lowStock ?? []).map((v) => ({
+    id: v.id,
+    name: `${v.productName} — ${v.colorName} ${v.size}`.trim(),
+    sku: v.sku,
+    stock: Number(v.stock)
+  }));
+
+  if (loading) {
+    return <div className="flex items-center justify-center h-64"><div className="w-8 h-8 rounded-full border-2 border-[#f0ebe2] border-t-[#2d4a3e] animate-spin" /></div>;
   }
+
+  return <div className="space-y-6">
+      {/* Stats Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {liveStatsCards.map((card, i) => <motion.div
+        {cards.map((card, i) => <motion.div
     key={card.label}
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: i * 0.08 }}
+    transition={{ delay: i * 0.06 }}
     className="bg-white rounded-xl p-5 border border-gray-100 shadow-sm"
   >
             <p className="text-xs text-gray-500 uppercase tracking-wider font-medium">{card.label}</p>
@@ -164,86 +165,62 @@ function AdminDashboard() {
                 {card.trend === "up" ? <FiTrendingUp size={12} /> : <FiTrendingDown size={12} />}
                 {card.change}
               </span>
-              <div className="w-16 h-8">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={sparkData[i].map((v, j) => ({ v, j }))}>
-                    <Line type="monotone" dataKey="v" stroke="#2d4a3e" strokeWidth={1.5} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
+              <Sparkline series={card.series} />
             </div>
           </motion.div>)}
       </div>
 
-      {
-    /* Revenue Chart */
-  }
+      {/* Revenue / Orders chart */}
       <motion.div
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: 0.32 }}
+    transition={{ delay: 0.3 }}
     className="bg-white rounded-xl border border-gray-100 shadow-sm p-5"
   >
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="font-semibold text-gray-900">Revenue Overview</h2>
-            <p className="text-xs text-gray-500 mt-0.5">12-month performance vs target</p>
+            <h2 className="font-semibold text-gray-900">{chartMode === "revenue" ? "Revenue" : "Orders"}</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Last 30 days</p>
           </div>
           <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
-            <button
-    onClick={() => setChartMode("revenue")}
-    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${chartMode === "revenue" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+            {["revenue", "orders"].map((m) => <button
+    key={m}
+    onClick={() => setChartMode(m)}
+    className={`px-3 py-1 text-xs font-medium rounded-md transition-all capitalize ${chartMode === m ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
   >
-              Revenue
-            </button>
-            <button
-    onClick={() => setChartMode("orders")}
-    className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${chartMode === "orders" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
-  >
-              Orders
-            </button>
+              {m}
+            </button>)}
           </div>
         </div>
-        <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+        {salesHistory.length === 0 ? <p className="text-sm text-gray-400 py-16 text-center">No sales in the last 30 days yet.</p>
+        : <ResponsiveContainer width="100%" height={260}>
+          <AreaChart data={salesHistory} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#2d4a3e" stopOpacity={0.15} />
                 <stop offset="95%" stopColor="#2d4a3e" stopOpacity={0} />
               </linearGradient>
-              <linearGradient id="tgtGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#c9b99a" stopOpacity={0.15} />
-                <stop offset="95%" stopColor="#c9b99a" stopOpacity={0} />
-              </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-            <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
+            <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} minTickGap={24} />
             <YAxis
     tick={{ fontSize: 11, fill: "#9ca3af" }}
     axisLine={false}
     tickLine={false}
-    tickFormatter={(v) => chartMode === "revenue" ? `\xA3${(v / 1e3).toFixed(0)}k` : String(v)}
+    tickFormatter={(v) => chartMode === "revenue" ? `${currencySymbol()}${(v / 1e3).toFixed(1)}k` : String(v)}
   />
-            <Tooltip content={<CustomTooltip />} />
-            {chartMode === "revenue" ? <>
-                <Area type="monotone" dataKey="revenue" name="revenue" stroke="#2d4a3e" strokeWidth={2} fill="url(#revGrad)" />
-                <Area type="monotone" dataKey="target" name="target" stroke="#c9b99a" strokeWidth={1.5} strokeDasharray="4 2" fill="url(#tgtGrad)" />
-              </> : <Area type="monotone" dataKey="orders" name="orders" stroke="#2d4a3e" strokeWidth={2} fill="url(#revGrad)" />}
+            <Tooltip content={<ChartTooltip />} />
+            <Area type="monotone" dataKey={chartMode} name={chartMode} stroke="#2d4a3e" strokeWidth={2} fill="url(#revGrad)" />
           </AreaChart>
-        </ResponsiveContainer>
+        </ResponsiveContainer>}
       </motion.div>
 
-      {
-    /* Two-column: Recent Orders + Top Products */
-  }
+      {/* Recent Orders + Top Products */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {
-    /* Recent Orders */
-  }
         <motion.div
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: 0.4 }}
+    transition={{ delay: 0.38 }}
     className="bg-white rounded-xl border border-gray-100 shadow-sm p-5"
   >
           <div className="flex items-center justify-between mb-4">
@@ -253,26 +230,24 @@ function AdminDashboard() {
             </Link>
           </div>
           <div className="space-y-2">
-            {recentOrdersList.map((order) => <div key={order.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
+            {recentOrders.length === 0 && <p className="text-sm text-gray-400 py-4">No orders yet.</p>}
+            {recentOrders.map((order) => <div key={order.id} className="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{order.orderNumber}</p>
                   <p className="text-xs text-gray-500 truncate">{order.customerName}</p>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[order.status]}`}>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium capitalize ${statusColors[order.status] || "bg-gray-100 text-gray-600"}`}>
                   {order.status}
                 </span>
-                <p className="text-sm font-semibold text-gray-900 tabular-nums">£{order.total.toFixed(0)}</p>
+                <p className="text-sm font-semibold text-gray-900 tabular-nums">{money(order.total)}</p>
               </div>)}
           </div>
         </motion.div>
 
-        {
-    /* Top Products */
-  }
         <motion.div
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: 0.44 }}
+    transition={{ delay: 0.42 }}
     className="bg-white rounded-xl border border-gray-100 shadow-sm p-5"
   >
           <div className="flex items-center justify-between mb-4">
@@ -282,59 +257,46 @@ function AdminDashboard() {
             </Link>
           </div>
           <div className="space-y-3">
-            {topProductsList.map((product, i) => <div key={product.name} className="flex items-center gap-3">
+            {topProducts.length === 0 && <p className="text-sm text-gray-400 py-4">No sales data yet.</p>}
+            {topProducts.map((product, i) => <div key={product.name} className="flex items-center gap-3">
                 <span className="w-5 text-xs font-bold text-gray-400 tabular-nums">{i + 1}</span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
-                  <p className="text-xs text-gray-500">{product.sales} sold · £{product.revenue.toLocaleString()}</p>
+                  <p className="text-xs text-gray-500">{product.sales} sold</p>
                 </div>
-                <span className={`flex items-center gap-0.5 text-xs font-semibold ${product.growth >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                  {product.growth >= 0 ? <FiTrendingUp size={11} /> : <FiTrendingDown size={11} />}
-                  {Math.abs(product.growth)}%
-                </span>
               </div>)}
           </div>
         </motion.div>
       </div>
 
-      {
-    /* Two-column: Category PieChart + Low Stock */
-  }
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Low Stock Alerts */}
-
-        {
-    /* Low Stock Alerts */
-  }
-        <motion.div
+      {/* Low Stock Alerts */}
+      <motion.div
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
-    transition={{ delay: 0.52 }}
+    transition={{ delay: 0.48 }}
     className="bg-white rounded-xl border border-gray-100 shadow-sm p-5"
   >
-          <div className="flex items-center gap-2 mb-4">
-            <FiAlertTriangle className="text-amber-500" size={16} />
-            <h2 className="font-semibold text-gray-900">Low Stock Alerts</h2>
-          </div>
-          <div className="space-y-3">
-            {lowStockProducts.map((product) => <div key={product.sku} className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg border border-amber-100">
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
-                  <p className="text-xs text-gray-500">{product.sku}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-bold text-amber-600">{product.stock} left</span>
-                  <button className="text-xs px-2.5 py-1 bg-[#2d4a3e] text-white rounded-md hover:bg-[#3d6355] transition-colors font-medium">
-                    Restock
-                  </button>
-                </div>
-              </div>)}
-          </div>
-          <Link to="/admin/inventory" className="flex items-center gap-1 mt-3 text-xs text-[#2d4a3e] hover:underline">
-            View all inventory <FiArrowRight size={11} />
-          </Link>
-        </motion.div>
-      </div>
+        <div className="flex items-center gap-2 mb-4">
+          <FiAlertTriangle className="text-amber-500" size={16} />
+          <h2 className="font-semibold text-gray-900">Low Stock Alerts</h2>
+          <span className="text-xs text-gray-400">(under 10 units)</span>
+        </div>
+        <div className="space-y-3">
+          {lowStock.length === 0 ? <p className="text-sm text-gray-400">Nothing running low right now.</p>
+          : lowStock.map((product) => <div key={product.id} className="flex items-center gap-3 p-3 bg-amber-50 rounded-lg border border-amber-100">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">{product.name}</p>
+                <p className="text-xs text-gray-500 font-mono">{product.sku}</p>
+              </div>
+              <span className={`text-sm font-bold ${product.stock === 0 ? "text-red-600" : "text-amber-600"}`}>
+                {product.stock === 0 ? "Out of stock" : `${product.stock} left`}
+              </span>
+            </div>)}
+        </div>
+        <Link to="/admin/inventory" className="flex items-center gap-1 mt-3 text-xs text-[#2d4a3e] hover:underline">
+          Manage inventory <FiArrowRight size={11} />
+        </Link>
+      </motion.div>
     </div>;
 }
 export {

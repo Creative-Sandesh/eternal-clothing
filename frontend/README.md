@@ -88,10 +88,11 @@ Routes are declared in `src/routes/index.jsx`, split across three layouts:
 
 Pages are `React.lazy`‑loaded. Unknown storefront paths fall through to `NotFoundPage`.
 
-> The account and admin route groups are **not currently wrapped in a route guard** —
-> `AuthContext` exposes `isAuthenticated` / `isAdmin`, but redirect protection is
-> enforced (if at all) inside individual layouts/pages. Add a guard component if you
-> need hard protection.
+> The account and admin route groups are wrapped in `src/components/RouteGuards.jsx`:
+> `<RequireAuth>` gates `/account/*` (redirects guests to `/login`, preserving the
+> target), `<RequireAdmin>` gates `/admin/*` (guests → `/login`, non‑admins →
+> `/account`). Both show a full‑page spinner while `AuthContext` is still resolving.
+> This is the single enforcement point — the layouts no longer redirect themselves.
 
 ---
 
@@ -106,7 +107,10 @@ Pages are `React.lazy`‑loaded. Unknown storefront paths fall through to `NotFo
   `errors`) on non‑2xx.
 - Exported groups: `authApi`, `userApi`, `productApi`, `categoryApi`, `collectionApi`,
   `inventoryApi`, `orderApi`, `addressApi`, `wishlistApi`, `reviewApi`, `couponApi`,
-  `blogApi`, `analyticsApi`, `settingsApi`.
+  `blogApi`, `analyticsApi`, `settingsApi`, `loyaltyApi`, `notificationApi`,
+  `referralApi`, `paymentMethodApi`, `marketingApi`.
+- On a `401` the helper transparently tries `POST /auth/refresh-token` once and
+  replays the request.
 - `normalizeProduct(p)` maps a backend product (snake/camel fields, `variants`, included
   `category`/`collection`) into the flat shape the UI components expect
   (`price`, `image`, `colors`, `sizes`, `inStock`, `rating`, …).
@@ -123,8 +127,13 @@ Pages are `React.lazy`‑loaded. Unknown storefront paths fall through to `NotFo
 
 ## Notes & gaps
 
-- `src/data/*.js` holds static data. Most pages now call the live API; these files remain
-  as fallback/reference and can be removed once every page is migrated.
+- `src/data/*.js` has been removed — every page is on the live API.
+- **Currency** is driven entirely by the `currency` store setting. `SettingsContext`
+  (`src/context/SettingsContext.jsx`) loads it once and exposes `money(amount)`,
+  `symbol`, `freeShippingThreshold` and `shippingFee`; `src/utils/money.js` holds the
+  symbol table (`NPR रू`, `INR ₹`, `USD $`, `GBP £`, `EUR €`, `AUD A$`, `CAD C$`).
+  Never hardcode a currency symbol — call `money()` or read `symbol`. Admins switch
+  currency from **Settings → General** and the whole UI reformats on save.
 - Some frontend pages have no backend counterpart yet (`ForgotPasswordPage`,
   `ResetPasswordPage`, `LoyaltyPage`, `NotificationsPage`, `ReferralPage`,
   `PaymentMethodsPage`, `MarketingPage`, admin `UsersPage`, `StoreLocatorPage`) — see the

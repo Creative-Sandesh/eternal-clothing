@@ -1,3 +1,4 @@
+import { fn, col } from "sequelize";
 import Category from "../models/category.model.js";
 import Product from "../models/product.model.js";
 import { ApiError } from "../utils/ApiError.js";
@@ -5,11 +6,36 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { slugify } from "../utils/slugify.js";
 
+const reorderCategories = asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    throw new ApiError(400, "ids array is required");
+  }
+  await Promise.all(
+    ids.map((id, index) => Category.update({ sortOrder: index }, { where: { id } }))
+  );
+  return res.status(200).json(new ApiResponse(200, {}, "Categories reordered"));
+});
+
 const getCategories = asyncHandler(async (req, res) => {
-  const categories = await Category.findAll();
+  const categories = await Category.findAll({ order: [["sortOrder", "ASC"], ["name", "ASC"]] });
+
+  // Attach a live product count per category.
+  const counts = await Product.findAll({
+    attributes: ["categoryId", [fn("COUNT", col("id")), "count"]],
+    group: ["categoryId"],
+    raw: true
+  });
+  const countMap = Object.fromEntries(counts.map((c) => [c.categoryId, Number(c.count)]));
+
+  const withCounts = categories.map((c) => ({
+    ...c.toJSON(),
+    productCount: countMap[c.id] ?? 0
+  }));
+
   return res
     .status(200)
-    .json(new ApiResponse(200, categories, "Categories fetched successfully"));
+    .json(new ApiResponse(200, withCounts, "Categories fetched successfully"));
 });
 
 const getCategoryBySlug = asyncHandler(async (req, res) => {
@@ -108,5 +134,6 @@ export {
   getCategoryBySlug,
   createCategory,
   updateCategory,
-  deleteCategory
+  deleteCategory,
+  reorderCategories
 };

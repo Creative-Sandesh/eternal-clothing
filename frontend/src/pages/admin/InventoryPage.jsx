@@ -13,6 +13,7 @@ function InventoryPage() {
   const [search, setSearch] = useState("");
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [restocked, setRestocked] = useState([]);
 
   const fetchInventory = async () => {
     try {
@@ -46,13 +47,14 @@ function InventoryPage() {
 
   const handleRestock = async (id, currentQty) => {
     try {
-      const newQty = currentQty + 50;
+      const newQty = (currentQty || 0) + 50;
       await inventoryApi.updateVariant(id, { stockQuantity: newQty });
       setItems((prev) => prev.map((item) => item.id === id ? {
         ...item,
         stock: newQty,
         status: "in_stock"
       } : item));
+      setRestocked((prev) => (prev.includes(id) ? prev : [...prev, id]));
     } catch (err) {
       console.error("Failed to restock variant", err);
     }
@@ -150,11 +152,11 @@ function InventoryPage() {
                         </td>
                         <td className="px-4 py-3">
                           <button
-      onClick={() => setRestocked((prev) => [...prev, item.id])}
+      onClick={() => handleRestock(item.id, item.stock)}
       disabled={isRestocked}
       className={`px-2.5 py-1 text-xs font-medium rounded-lg transition-colors ${isRestocked ? "bg-green-100 text-green-700 cursor-default" : "bg-[#0a0a0a] text-white hover:bg-[#2d4a3e]"}`}
     >
-                            {isRestocked ? "Ordered" : "Restock"}
+                            {isRestocked ? "Restocked" : "Restock"}
                           </button>
                         </td>
                       </tr>;
@@ -192,7 +194,7 @@ function InventoryPage() {
                     {item.stock === 0 ? "Out of stock" : `${item.stock} remaining`}
                   </span>
                   <button
-    onClick={() => setRestocked((prev) => [...prev, item.id])}
+    onClick={() => handleRestock(item.id, item.stock)}
     className="text-xs px-2 py-0.5 bg-[#0a0a0a] text-white rounded-md hover:bg-[#2d4a3e] transition-colors"
   >
                     Restock

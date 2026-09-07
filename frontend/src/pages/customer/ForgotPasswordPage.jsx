@@ -2,17 +2,25 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiMail, FiArrowLeft, FiCheckCircle } from "react-icons/fi";
+import { authApi } from "../../services/api";
 function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
-  const handleSubmit = (e) => {
+  const [devToken, setDevToken] = useState("");
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const res = await authApi.forgotPassword(email);
+      // Outside production the backend returns the raw token so the flow is testable.
+      setDevToken(res.data?.resetToken || "");
+    } catch {
+      // The endpoint always 200s to avoid account enumeration; ignore errors.
+    } finally {
       setLoading(false);
       setSent(true);
-    }, 1500);
+    }
   };
   return <div
     className="min-h-screen flex items-center justify-center px-6 py-16"
@@ -104,10 +112,16 @@ function ForgotPasswordPage() {
                   Check your email
                 </h2>
                 <p className="text-sm leading-relaxed mb-8" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>
-                  We have sent a password reset link to{" "}
-                  <span style={{ color: "#0a0a0a", fontWeight: 500 }}>{email}</span>.
-                  Please check your inbox and spam folder.
+                  If an account exists for{" "}
+                  <span style={{ color: "#0a0a0a", fontWeight: 500 }}>{email}</span>,
+                  a password reset link is on its way.
                 </p>
+                {devToken && <p className="text-xs mb-6 break-all" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>
+                  Dev mode — continue here:{" "}
+                  <Link to={`/reset-password?token=${devToken}`} className="underline underline-offset-2" style={{ color: "#0a0a0a" }}>
+                    Reset password
+                  </Link>
+                </p>}
                 <p className="text-xs" style={{ color: "#8c8277", fontFamily: "Manrope, sans-serif" }}>
                   {"Didn't receive the email?"}{" "}
                   <button

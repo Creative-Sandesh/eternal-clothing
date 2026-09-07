@@ -87,7 +87,9 @@ const pageTitles = {
   "/admin/settings": "Settings"
 };
 function AdminLayout() {
-  const { user, loading, logout, isAdmin } = useAuth();
+  // Auth + ADMIN/STAFF role are enforced by <RequireAdmin> at the route level
+  // (see routes/index.jsx), so `user` is always an admin here.
+  const { user, logout } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -95,12 +97,6 @@ function AdminLayout() {
   const navigate = useNavigate();
   const notifRef = useRef(null);
   const profileRef = useRef(null);
-
-  useEffect(() => {
-    if (!loading && (!user || !isAdmin)) {
-      navigate("/login", { replace: true });
-    }
-  }, [user, loading, isAdmin, navigate]);
 
   const path = window.location.pathname;
   const title = pageTitles[path] ?? "Admin";
@@ -118,16 +114,6 @@ function AdminLayout() {
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[#fafafa]">
-        <div className="w-8 h-8 rounded-full border-2 border-[#f0ebe2] border-t-[#2d4a3e] animate-spin" />
-      </div>
-    );
-  }
-
-  if (!user || !isAdmin) return null;
 
   const notifications = [
     { id: 1, text: "New order #ET-2024-00428 placed", time: "2m ago", unread: true },

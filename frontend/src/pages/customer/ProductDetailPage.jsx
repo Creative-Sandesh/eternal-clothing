@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useMoney, useSettings } from "../../context/SettingsContext";
 import { Link, useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiHeart, FiChevronLeft, FiChevronRight, FiChevronDown, FiChevronUp, FiTruck, FiRotateCcw } from "react-icons/fi";
@@ -18,6 +19,9 @@ function StarRating({ rating, size = "sm" }) {
     </div>;
 }
 function ProductDetailPage() {
+  const money = useMoney();
+  const { freeShippingThreshold } = useSettings();
+  const freeShipText = freeShippingThreshold > 0 ? `Free on orders over ${money(freeShippingThreshold)}. ` : "";
   const { id } = useParams();
   const navigate = useNavigate();
   const { addItem } = useCart();
@@ -226,7 +230,7 @@ function ProductDetailPage() {
     {
       label: "Shipping & Returns",
       content: <p className="text-sm text-[#8c8277] leading-relaxed">
-          Standard delivery 3–5 working days. Free on orders over £200. Express delivery available at checkout. Returns accepted within 30 days of receipt in original condition and packaging.
+          Standard delivery 3–5 working days. {freeShipText}Express delivery available at checkout. Returns accepted within 30 days of receipt in original condition and packaging.
         </p>
     }
   ];
@@ -342,7 +346,7 @@ function ProductDetailPage() {
     onClick={() => setActiveTab("reviews")}
     className="text-xs text-[#8c8277] underline underline-offset-2 hover:text-[#0a0a0a] transition"
   >
-                {product.reviewCount || mockReviews.length} reviews
+                {product.reviewCount ?? reviewsList.length} reviews
               </button>
             </div>
 
@@ -352,13 +356,13 @@ function ProductDetailPage() {
             <div className="flex items-baseline gap-3 mt-4">
               {product.isSale && product.originalPrice ? <>
                   <span className="text-3xl font-display text-red-600">
-                    £{product.price.toFixed(2)}
+                    {money(product.price)}
                   </span>
                   <span className="text-xl text-[#8c8277] line-through">
-                    £{product.originalPrice.toFixed(2)}
+                    {money(product.originalPrice)}
                   </span>
                 </> : <span className="text-3xl font-display text-[#0a0a0a]">
-                  £{product.price.toFixed(2)}
+                  {money(product.price)}
                 </span>}
             </div>
 
@@ -493,10 +497,12 @@ function ProductDetailPage() {
     /* Delivery strip */
   }
             <div className="flex flex-wrap gap-4 mt-4 text-xs text-[#8c8277]">
-              <span className="flex items-center gap-1.5">
-                <FiTruck className="text-sm" />
-                Free delivery over £200
-              </span>
+              {freeShippingThreshold > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <FiTruck className="text-sm" />
+                  Free delivery over {money(freeShippingThreshold)}
+                </span>
+              )}
               <span className="flex items-center gap-1.5">
                 <FiRotateCcw className="text-sm" />
                 30-day returns
@@ -623,9 +629,9 @@ function ProductDetailPage() {
                     <h3 className="font-display text-base text-[#0a0a0a] leading-snug mb-1">{related.name}</h3>
                     <div className="flex items-baseline gap-2">
                       {related.isSale && related.originalPrice ? <>
-                          <span className="text-sm text-red-600 font-medium">£{related.price.toFixed(2)}</span>
-                          <span className="text-xs text-[#8c8277] line-through">£{related.originalPrice.toFixed(2)}</span>
-                        </> : <span className="text-sm text-[#0a0a0a]">£{related.price.toFixed(2)}</span>}
+                          <span className="text-sm text-red-600 font-medium">{money(related.price)}</span>
+                          <span className="text-xs text-[#8c8277] line-through">{money(related.originalPrice)}</span>
+                        </> : <span className="text-sm text-[#0a0a0a]">{money(related.price)}</span>}
                     </div>
                   </Link>
                 </motion.div>)}
