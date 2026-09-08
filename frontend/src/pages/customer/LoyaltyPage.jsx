@@ -53,7 +53,7 @@ function LoyaltyPage() {
           <div className="text-right">
             <p className="text-xs uppercase tracking-widest mb-1" style={{ color: "rgba(250,250,250,0.6)", fontFamily: "Manrope, sans-serif" }}>Points Balance</p>
             <p className="font-display text-5xl" style={{ color: "#fafafa" }}>{balance.toLocaleString()}</p>
-            <p className="text-xs mt-1" style={{ color: "rgba(250,250,250,0.5)", fontFamily: "Manrope, sans-serif" }}>≈ {money(cashValue)} in rewards</p>
+            <p className="text-xs mt-1" style={{ color: "rgba(250,250,250,0.5)", fontFamily: "Manrope, sans-serif" }}>≈ {money(cashValue)} — redeem at checkout</p>
           </div>
         </div>
         {nextTierAt && <div>

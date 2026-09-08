@@ -9,6 +9,8 @@ const stmts = [
   "ALTER TABLE `orders` ADD COLUMN `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP",
   // Guest checkout: orders can be placed without an account.
   "ALTER TABLE `orders` ADD COLUMN `guest_email` VARCHAR(150) NULL",
+  // Loyalty points redeemed at checkout.
+  "ALTER TABLE `orders` ADD COLUMN `loyalty_points_used` INT NOT NULL DEFAULT 0",
   // Keep the exact charset/collation of users.id or the FK (addresses_ibfk_1) rejects the change.
   "ALTER TABLE `addresses` MODIFY COLUMN `user_id` CHAR(36) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL",
 ];

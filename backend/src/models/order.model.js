@@ -70,6 +70,15 @@ const Order = sequelize.define(
             field: "discount_amount",
         },
 
+        // Loyalty points spent on this order (0 when none). Their cash value is
+        // already reflected in totalAmount; kept so a refund can restore them.
+        loyaltyPointsUsed: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0,
+            field: "loyalty_points_used",
+        },
+
         shippingFee: {
             type: DataTypes.DECIMAL(12, 2),
             allowNull: false,

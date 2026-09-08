@@ -141,7 +141,7 @@ Status legend:
 | **Referral programme** | Implemented. Unique `referralCode` per user; `?ref=` on register records a pending `Referral`; the referee's first paid order completes it and credits both users. `GET /referrals/me`; `ReferralPage` rebuilt + wired; `RegisterPage` reads `?ref=`. |
 | **Saved payment methods** | Implemented. Tokenised (brand + last4 only). `GET/POST /payment-methods`, set-default, delete. `PaymentMethodsPage` rebuilt + wired; checkout accepts `savedPaymentMethodId`. |
 | **Real payments** | Implemented. Provider abstraction (`src/utils/payments.js`): `MOCK`/`CARD` instant, `COD` settled on delivery, `ESEWA`/`KHALTI` redirect + `POST /orders/payments/verify` (eSewa v2 HMAC signature + Khalti lookup; sandbox auto-approve without keys). `CheckoutPage` has a provider selector; `OrderConfirmationPage` runs the verify callback. |
-| **Server-persisted cart** (`/api/cart`) | Still client-side (context + localStorage) — acceptable for this build. |
+| **Server-persisted cart** (`/api/cart`) | **Deliberately not built** (reviewed and declined). Client-side `CartContext` + `localStorage` stays. Checkout re-validates stock (row-locked) and prices server-side, so a stale client cart is not a correctness risk; cross-device sync and abandoned-cart recovery aren't required. Revisit only with a concrete driver. |
 
 ---
 
@@ -286,14 +286,25 @@ regression found and fixed (see below):
    | Product image upload | `multer` → `public/uploads`, `POST /products/admin/upload` (5 MB, image types), `ASSET_BASE_URL` env; Vite proxies `/uploads`. `AddEditProductPage` drop zone + file picker wired. |
    | Order notes | `OrderNote` model, `GET/POST /orders/admin/:id/notes` + `DELETE /orders/admin/notes/:noteId`; notes panel in `OrderDetailAdminPage`. |
    | Coupon auto-rules | `DiscountRule` model (`MIN_SUBTOTAL`/`MIN_ITEMS` → `FREE_SHIPPING`/`PERCENT_OFF`/`FIXED_OFF`), `GET/POST/PUT/DELETE /coupons/admin/rules`, applied in checkout. |
-   | Test suite | `vitest` + `supertest`; `tests/smoke.test.js` (25 read-only tests: infra, auth, RBAC, catalog incl. product-by-id, write-route validation, guest-checkout validation, loyalty/referral/notifications, payment-method schema) + opt-in `tests/write.test.js`. `npm test`. |
+   | Test suite | `vitest` + `supertest`; `tests/smoke.test.js` (26 read-only tests) + opt-in `tests/write.test.js`. `src/db/index.js` uses `TEST_DB_URI` in a test context; `vitest.config.js` loads `.env.test`. `npm test`. |
    | Guest checkout | **Backend:** `optionalAuth` middleware; `POST /orders/checkout` + `/payments/verify` accept anonymous callers; `orders.guest_email` + nullable `addresses.user_id` (migration); inline address bodies; loyalty/referral/notifications skipped for guests. **Frontend:** `CheckoutPage` guest inline-address flow + step validation; `OrderConfirmationPage` order-from-state + guest verify + guest CTAs. |
+   | Loyalty redemption | `POST /orders/checkout` accepts `redeemPoints` (account only) — capped by balance + payable amount, converted at `loyalty_points_redemption_rate`, applied as a discount, debited as a `REDEEMED` ledger row, returned on refund. `orders.loyalty_points_used` (migration). `CheckoutPage` has a points control; `OrderConfirmationPage` shows the line. |
    | Secret rotation | JWT `ACCESS_/REFRESH_TOKEN_SECRET` regenerated in `.env`. *(Aiven DB creds still need rotating via the Aiven console.)* |
-   | Wider zod | validators added for product create/update, category/collection create, coupon create, address create, review create. |
+   | Wider zod | every write route now schema-validated (`content.validators.js`, `user.validators.js` + `catalog.validators.js` additions). |
    | Route ordering | `collection.routes.js` and `category.routes.js` now declare `/admin*` before `/:slug`. |
-8. **Still open:** real eSewa/Khalti production keys, real SMTP, loyalty redemption
-   at checkout, server-side cart, a dedicated test DB (the suite currently runs
-   read-only against dev).
+8. **Still open (external / large):**
+   - **Real eSewa / Khalti production keys** — code is ready; set `ESEWA_SECRET_KEY`
+     / `ESEWA_PRODUCT_CODE` / `KHALTI_SECRET_KEY` in `.env` and the sandbox
+     auto-approve turns off automatically.
+   - **Real SMTP** — set `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` /
+     `MAIL_FROM`; with `SMTP_HOST` blank the mailer just logs to the console.
+   - **Test DB provisioning** — the harness is in place (`TEST_DB_URI` +
+     `.env.test.example`); create the isolated schema and expand write-path coverage.
+   - **Server-side cart** — reviewed and **deliberately declined**. The client-side
+     cart (`CartContext` + `localStorage`) is sufficient; checkout re-validates
+     stock + prices server-side so a stale cart is safe, and cross-device sync /
+     abandoned-cart recovery aren't needed. A `/api/cart` with guest-cart
+     merge-on-login is a large change with little payoff here.
 
 ### Run after pulling this change
 

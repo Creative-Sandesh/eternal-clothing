@@ -62,7 +62,10 @@ See `README.md` for setup and the full API reference.
   checkout after any coupon with no code needed. Managed from the Coupons admin page.
 * **Loyalty** — points accrue on paid orders (`loyalty_points_per_dollar`), a
   `LoyaltyTransaction` ledger records every change, `GET /loyalty/me` returns the
-  balance / tier / history. Reversed on refund.
+  balance / tier / history. Reversed on refund. **Redemption:** `checkout` accepts
+  `redeemPoints` (account only) — capped by balance + payable amount, converted at
+  `loyalty_points_redemption_rate`, applied as a discount, debited as a `REDEEMED`
+  row and returned on refund. `Order.loyaltyPointsUsed`.
 * **Referrals** — every user gets a unique `referralCode`; registering with `?ref=`
   records a pending `Referral`; the referee's first paid order completes it and
   credits both users (`referral_reward_points`). `GET /referrals/me`.
@@ -96,8 +99,12 @@ See `README.md` for setup and the full API reference.
 * Payment gateways run in sandbox mode without `ESEWA_*` / `KHALTI_*` keys; add
   real keys before production.
 * Notifications are polled on page load (no websockets).
-* Loyalty point *redemption* at checkout is not built (accrual + ledger only).
-* `npm test` runs 25 read-only vitest/supertest checks against the dev database;
+* Cart is client-side (`CartContext` + `localStorage`) by design — a server-side
+  cart was considered and deliberately declined: checkout already re-validates
+  stock (row-locked) and prices from the DB, so a stale client cart carries no
+  correctness risk, and cross-device sync / abandoned-cart recovery aren't needed
+  here. Revisit if a concrete driver appears.
+* `npm test` runs 26 read-only vitest/supertest checks against the dev database;
   the `tests/write.test.js` lifecycle block runs only when `TEST_DB_URI` points at
   an isolated schema (`.env.test.example`).
 * Every write route is `zod`-validated (`src/validators/`).

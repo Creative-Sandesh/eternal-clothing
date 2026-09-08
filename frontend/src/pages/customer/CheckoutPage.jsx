@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { FiCheck, FiChevronRight, FiLock, FiPackage, FiCreditCard, FiMapPin, FiTag, FiLoader } from "react-icons/fi";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
-import { addressApi, couponApi, orderApi, paymentMethodApi, marketingApi } from "../../services/api";
+import { addressApi, couponApi, orderApi, paymentMethodApi, marketingApi, loyaltyApi } from "../../services/api";
 
 const PROVIDERS = [
   { value: "CARD", label: "Credit / Debit Card" },
@@ -65,6 +65,9 @@ function CheckoutPage() {
   const [couponError, setCouponError] = useState("");
   const [couponLoading, setCouponLoading] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState(null);
+  // Loyalty points redemption (logged-in only)
+  const [loyalty, setLoyalty] = useState(null); // { balance, redemptionRate }
+  const [redeemPoints, setRedeemPoints] = useState(0);
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderError, setOrderError] = useState("");
   const [stepError, setStepError] = useState("");
@@ -83,6 +86,17 @@ function CheckoutPage() {
     if (user?.email && !form.email) {
       setForm((prev) => ({ ...prev, email: user.email }));
     }
+  }, [user]);
+
+  // Load the loyalty balance for logged-in users
+  useEffect(() => {
+    if (!user) { setLoyalty(null); setRedeemPoints(0); return; }
+    loyaltyApi.getMine()
+      .then((res) => setLoyalty({
+        balance: Number(res.data?.balance || 0),
+        redemptionRate: Number(res.data?.redemptionRate || 0),
+      }))
+      .catch(() => setLoyalty(null));
   }, [user]);
 
   // Load saved payment methods for logged-in users
@@ -131,7 +145,17 @@ function CheckoutPage() {
   const displayTotal = items.length > 0 ? total : 0;
   const shippingCost = displayTotal === 0 || (freeShippingThreshold > 0 && displayTotal >= freeShippingThreshold) ? 0 : shippingFee;
   const tax = displayTotal * (taxRatePercent / 100);
-  const grandTotal = displayTotal + shippingCost + tax - couponDiscount;
+
+  // Loyalty redemption — capped by balance and by the amount still payable.
+  const rate = loyalty?.redemptionRate || 0;
+  const payableBeforeLoyalty = Math.max(0, displayTotal + shippingCost + tax - couponDiscount);
+  const maxRedeemable = loyalty && rate > 0
+    ? Math.min(loyalty.balance, Math.floor(payableBeforeLoyalty / rate))
+    : 0;
+  const effectiveRedeem = Math.max(0, Math.min(redeemPoints, maxRedeemable));
+  const loyaltyDiscount = Math.round(effectiveRedeem * rate * 100) / 100;
+
+  const grandTotal = Math.max(0, payableBeforeLoyalty - loyaltyDiscount);
 
   function updateForm(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -223,6 +247,7 @@ function CheckoutPage() {
       const payload = {
         items: orderItems,
         couponCode: appliedCoupon || undefined,
+        redeemPoints: user && effectiveRedeem > 0 ? effectiveRedeem : undefined,
       };
 
       if (user) {
@@ -937,6 +962,39 @@ function CheckoutPage() {
               )}
             </div>
 
+            {/* Loyalty points */}
+            {loyalty && loyalty.balance > 0 && rate > 0 && (
+              <div className="mb-4">
+                <p className={labelClass}>Loyalty Points</p>
+                <p className="text-xs text-eternal-stone mb-2">
+                  You have <span className="text-eternal-black font-medium">{loyalty.balance.toLocaleString()}</span> points
+                  {maxRedeemable > 0 && <> · up to {money(Math.round(maxRedeemable * rate * 100) / 100)} off this order</>}
+                </p>
+                {maxRedeemable > 0 ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={0}
+                      max={maxRedeemable}
+                      value={redeemPoints || ""}
+                      onChange={(e) => setRedeemPoints(Math.max(0, Math.min(maxRedeemable, Math.floor(Number(e.target.value) || 0))))}
+                      placeholder="0"
+                      className="w-24 border-b border-eternal-stone bg-transparent py-2 text-sm outline-none focus:border-eternal-black"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setRedeemPoints(redeemPoints >= maxRedeemable ? 0 : maxRedeemable)}
+                      className="text-xs tracking-widest uppercase px-3 py-2 border border-eternal-black text-eternal-black hover:bg-eternal-black hover:text-eternal-white transition-colors"
+                    >
+                      {redeemPoints >= maxRedeemable ? "Clear" : "Use max"}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-eternal-stone">Add more to your order to redeem points.</p>
+                )}
+              </div>
+            )}
+
             <div className="border-t border-eternal-stone/20 pt-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-eternal-stone">Subtotal</span>
@@ -958,6 +1016,12 @@ function CheckoutPage() {
                 <div className="flex justify-between text-sm text-green-600">
                   <span>Discount ({appliedCoupon})</span>
                   <span>-{money(couponDiscount)}</span>
+                </div>
+              )}
+              {loyaltyDiscount > 0 && (
+                <div className="flex justify-between text-sm text-green-600">
+                  <span>Loyalty points ({effectiveRedeem.toLocaleString()})</span>
+                  <span>-{money(loyaltyDiscount)}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm font-medium border-t border-eternal-stone/20 pt-3 mt-3">

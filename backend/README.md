@@ -90,8 +90,9 @@ Run both after pulling schema changes. `npm run sync` creates any new tables
 `loyalty_transactions`, `notifications`, `discount_rules`, `order_notes`) and
 nullable columns; `npm run migrate`
 handles columns `sync` can't add or alter cleanly on a populated table
-(`orders.subtotal_amount` / `tax_amount` / `updated_at` / `guest_email`, and
-relaxing `addresses.user_id` to nullable for guest checkout).
+(`orders.subtotal_amount` / `tax_amount` / `updated_at` / `guest_email` /
+`loyalty_points_used`, and relaxing `addresses.user_id` to nullable for guest
+checkout).
 
 ### Seed demo data
 
@@ -197,7 +198,7 @@ Associations live in `src/models/relation.js`. See `database_schema.md` for the 
 | `Collection` | `collections` | unique `slug` |
 | `Product` | `products` | `paranoid` (soft delete); `details` & `images` are JSON; status `DRAFT` / `PUBLISHED` / `ARCHIVED` |
 | `ProductVariant` | `product_variants` | size + color + unique `sku` + `stockQuantity` + optional `priceOverride` |
-| `Order` | `orders` | status `PENDING`→`PROCESSING`→`SHIPPED`→`DELIVERED` / `CANCELLED`; unique `orderNumber`; `userId` nullable + `guestEmail` for guest checkout; stores `subtotalAmount`, `taxAmount`, `discountAmount`, `shippingFee`, `totalAmount`; has `createdAt` + `updatedAt` |
+| `Order` | `orders` | status `PENDING`→`PROCESSING`→`SHIPPED`→`DELIVERED` / `CANCELLED`; unique `orderNumber`; `userId` nullable + `guestEmail` for guest checkout; stores `subtotalAmount`, `taxAmount`, `discountAmount`, `loyaltyPointsUsed`, `shippingFee`, `totalAmount`; has `createdAt` + `updatedAt` |
 | `OrderItem` | `order_items` | links order ↔ variant, snapshots `unitPrice` |
 | `Payment` | `payments` | `provider` (`MOCK`/`CARD`/`COD`/`ESEWA`/`KHALTI`), status `PENDING` / `COMPLETED` / `FAILED` / `REFUNDED`, nullable `transactionId` |
 | `PaymentMethod` | `payment_methods` | saved instrument — tokenised (brand + last4 only), `isDefault` |
@@ -325,7 +326,7 @@ Every order response includes `items` → `productVariant` → `product`,
 
 | Method | Path | Notes |
 |--------|------|-------|
-| POST | `/checkout` | **auth optional** — zod-validated; row-locked variants, coupon, shipping + tax from `settings`. `provider` ∈ `MOCK`/`CARD`/`COD`/`ESEWA`/`KHALTI`. Returns `{ order, provider, redirect?, requiresPayment }` — for `ESEWA`/`KHALTI` the client uses `redirect` then calls `/payments/verify`.<br>• **Account** (Bearer token): `{ items:[{ productVariantId, quantity }], shippingAddressId, billingAddressId, couponCode?, provider?, savedPaymentMethodId?, paymentToken? }` — plus loyalty accrual + referral completion.<br>• **Guest** (no token): `{ items, shippingAddress:{ addressLine1, addressLine2?, city, state?, postalCode, country }, billingAddress:{…}, guestEmail, couponCode?, provider?, paymentToken? }` — `Order.userId` is null, `guestEmail` is stored, the addresses are created with no owner; no loyalty/referral/notifications. `savedPaymentMethodId` is ignored. |
+| POST | `/checkout` | **auth optional** — zod-validated; row-locked variants, coupon, shipping + tax from `settings`. `provider` ∈ `MOCK`/`CARD`/`COD`/`ESEWA`/`KHALTI`. Returns `{ order, provider, redirect?, requiresPayment }` — for `ESEWA`/`KHALTI` the client uses `redirect` then calls `/payments/verify`.<br>• **Account** (Bearer token): `{ items:[{ productVariantId, quantity }], shippingAddressId, billingAddressId, couponCode?, redeemPoints?, provider?, savedPaymentMethodId?, paymentToken? }` — plus loyalty accrual + referral completion; `redeemPoints` spends loyalty points as a discount (see the Loyalty section).<br>• **Guest** (no token): `{ items, shippingAddress:{ addressLine1, addressLine2?, city, state?, postalCode, country }, billingAddress:{…}, guestEmail, couponCode?, provider?, paymentToken? }` — `Order.userId` is null, `guestEmail` is stored, the addresses are created with no owner; no loyalty/referral/notifications. `savedPaymentMethodId` is ignored. |
 | POST | `/payments/verify` | **auth optional** — `{ orderId, provider, ref, guestEmail? }` — confirm a redirect payment; settles the order (idempotent). Authorised by the owning account, or by a guest supplying the order's `guestEmail`. |
 | GET | `/my-orders` | 🔒 |
 | GET | `/my-orders/:id` | 🔒 |
@@ -412,8 +413,15 @@ settings live on every order).
 | GET | `/me` | 🔒 `{ balance, tier, nextTierAt, lifetimeEarned, lifetimeSpent, pointsPerDollar, redemptionRate, transactions[] }` |
 
 Points accrue automatically when an order is **paid** (`floor(subtotal ×
-loyalty_points_per_dollar)`) and are reversed on refund. Redemption at checkout is
-not implemented.
+loyalty_points_per_dollar)`) and are reversed on refund.
+
+**Redemption:** `POST /orders/checkout` accepts `redeemPoints` (account checkouts
+only). The value is capped by the caller's balance and by the amount still
+payable, converted at `loyalty_points_redemption_rate` currency per point, and
+applied as a discount — `totalAmount` never goes below 0. The points are debited
+at checkout (a `REDEEMED` ledger row) and returned in full if the order is
+refunded. The checkout response includes `loyaltyPointsUsed` / `loyaltyDiscount`,
+and `Order` stores `loyaltyPointsUsed`.
 
 ### Notifications — `/notifications` (all 🔒)
 | Method | Path | Notes |
@@ -493,10 +501,11 @@ with `referral_reward_points` loyalty points.
 
 See **`FIXES.md`** and **`plan.md`** for the full tracked list. In brief, still open:
 
-- Configure a real SMTP server and real eSewa/Khalti keys for production.
-- Loyalty point *redemption* at checkout is not built (accrual + ledger only).
-- Cart is client-side only (no `/api/cart`).
-- `npm test` — 25 read-only checks always run; the `tests/write.test.js` lifecycle
+- Configure a real SMTP server and real eSewa/Khalti keys for production (both are
+  env-var driven — the code is ready).
+- Cart is client-side only (no `/api/cart`) — a server-side cart is deliberately
+  out of scope for this project.
+- `npm test` — 26 read-only checks always run; the `tests/write.test.js` lifecycle
   block runs only when `TEST_DB_URI` is set (see `.env.test.example`). Expanding
   write-path coverage is the remaining test task.
 - JWT secrets in `.env` have been rotated; the Aiven MySQL credentials still need

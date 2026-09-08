@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useLocation, useSearchParams } from "react-router-dom";
-import { useMoney } from "../../context/SettingsContext";
+import { useMoney, useSettings } from "../../context/SettingsContext";
 import { useAuth } from "../../context/AuthContext";
 import { motion } from "framer-motion";
 import { FiCheck, FiPackage, FiArrowRight, FiLoader, FiAlertCircle } from "react-icons/fi";
@@ -19,6 +19,7 @@ function readPendingVerify() {
 
 function OrderConfirmationPage() {
   const money = useMoney();
+  const { settings } = useSettings();
   const { user } = useAuth();
   const location = useLocation();
   const [params] = useSearchParams();
@@ -163,6 +164,7 @@ function OrderConfirmationPage() {
           {order && <div className="border-t border-[#f0ebe2] pt-4 space-y-1.5">
             <div className="flex justify-between text-sm text-[#8c8277]"><span>Subtotal</span><span>{money(Number(order.subtotalAmount || 0))}</span></div>
             {Number(order.discountAmount) > 0 && <div className="flex justify-between text-sm text-[#2d4a3e]"><span>Discount</span><span>−{money(Number(order.discountAmount))}</span></div>}
+            {Number(order.loyaltyPointsUsed) > 0 && <div className="flex justify-between text-sm text-[#2d4a3e]"><span>Loyalty points ({Number(order.loyaltyPointsUsed).toLocaleString()})</span><span>−{money(Math.round(Number(order.loyaltyPointsUsed) * (Number(settings.loyalty_points_redemption_rate) || 0) * 100) / 100)}</span></div>}
             <div className="flex justify-between text-sm text-[#8c8277]"><span>Shipping</span><span>{Number(order.shippingFee) === 0 ? "Free" : money(Number(order.shippingFee))}</span></div>
             {Number(order.taxAmount) > 0 && <div className="flex justify-between text-sm text-[#8c8277]"><span>Tax</span><span>{money(Number(order.taxAmount))}</span></div>}
             <div className="flex justify-between text-base font-medium text-[#0a0a0a] pt-1"><span>Total</span><span>{money(Number(order.totalAmount || 0))}</span></div>

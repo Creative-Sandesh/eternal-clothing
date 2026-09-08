@@ -181,6 +181,20 @@ describe("checkout validation", () => {
     expect(res.status).toBe(400);
     expect(res.body.errors.map((e) => e.field)).toContain("guestEmail");
   });
+
+  it("rejects a negative redeemPoints value", async () => {
+    const res = await api()
+      .post("/api/v1/orders/checkout")
+      .set(auth(customerToken))
+      .send({
+        items: [{ productVariantId: "00000000-0000-0000-0000-000000000000", quantity: 1 }],
+        shippingAddressId: "00000000-0000-0000-0000-000000000000",
+        billingAddressId: "00000000-0000-0000-0000-000000000000",
+        redeemPoints: -50,
+      });
+    expect(res.status).toBe(400);
+    expect(res.body.errors.map((e) => e.field)).toContain("redeemPoints");
+  });
 });
 
 describe("customer features", () => {

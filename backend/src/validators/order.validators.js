@@ -31,6 +31,7 @@ export const checkoutSchema = z
     billingAddress: inlineAddress.optional(),
     guestEmail: z.string().trim().email("A valid email is required").max(150).optional(),
     couponCode: z.string().trim().max(50).optional().or(z.literal("")),
+    redeemPoints: z.coerce.number().int().nonnegative().optional(),
     provider: z.string().trim().max(20).optional(),
     paymentMethod: z.string().trim().max(50).optional(), // legacy alias for provider
     paymentToken: z.string().trim().max(255).optional(),

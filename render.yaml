@@ -1,0 +1,56 @@
+# Render Blueprint — deploys the API (web service) and the storefront (static site).
+# In the Render dashboard: New → Blueprint → pick this repo. After the first apply,
+# fill in the env vars marked `sync: false` (see the deploy notes) and redeploy.
+services:
+  # ── Backend API ───────────────────────────────────────────────────────────
+  - type: web
+    name: eternal-api
+    runtime: node
+    rootDir: backend
+    plan: starter                 # "free" also works (cold starts + no disk)
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_URI               # external MySQL — Render has no managed MySQL
+        sync: false
+      - key: ACCESS_TOKEN_SECRET
+        generateValue: true
+      - key: REFRESH_TOKEN_SECRET
+        generateValue: true
+      - key: ACCESS_TOKEN_EXPIRY
+        value: 1d
+      - key: REFRESH_TOKEN_EXPIRY
+        value: 10d
+      - key: CROSS_ORIGIN         # = the static site URL, set after first deploy
+        sync: false
+      - key: APP_URL             # = the static site URL (email + payment links)
+        sync: false
+      - key: ASSET_BASE_URL      # = this service's own URL (absolute upload URLs)
+        sync: false
+      - key: RATE_LIMIT_MAX
+        value: "600"
+      - key: AUTH_RATE_LIMIT_MAX
+        value: "20"
+      # Add when going live for real:
+      # SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS, MAIL_FROM
+      # ESEWA_SECRET_KEY, ESEWA_PRODUCT_CODE, KHALTI_SECRET_KEY
+
+  # ── Storefront (Vite build → static) ──────────────────────────────────────
+  - type: web
+    name: eternal-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    envVars:
+      - key: VITE_API_URL         # = the eternal-api URL, set after first deploy
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

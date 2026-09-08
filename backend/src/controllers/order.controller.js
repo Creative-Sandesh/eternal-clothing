@@ -23,7 +23,7 @@ import { PROVIDERS, isInstant, isDeferred, isRedirect, buildRedirectPayload, ver
 // Read numeric store settings with sensible fallbacks.
 const getStoreConfig = async () => {
   const rows = await Setting.findAll({
-    where: { key: ["shipping_fee_standard", "free_shipping_threshold", "tax_rate_percent", "loyalty_points_per_dollar"] }
+    where: { key: ["shipping_fee_standard", "free_shipping_threshold", "tax_rate_percent", "loyalty_points_per_dollar", "loyalty_points_redemption_rate"] }
   });
   const map = Object.fromEntries(rows.map((r) => [r.key, r.value]));
   const num = (v, d) => (v === undefined || v === null || isNaN(Number(v)) ? d : Number(v));
@@ -31,7 +31,8 @@ const getStoreConfig = async () => {
     shippingFee: num(map.shipping_fee_standard, 10),
     freeShippingThreshold: num(map.free_shipping_threshold, 100),
     taxRatePercent: num(map.tax_rate_percent, 0),
-    loyaltyPointsPerDollar: num(map.loyalty_points_per_dollar, 1)
+    loyaltyPointsPerDollar: num(map.loyalty_points_per_dollar, 1),
+    loyaltyRedemptionRate: num(map.loyalty_points_redemption_rate, 0.01)
   };
 };
 
@@ -266,7 +267,21 @@ const checkoutOrder = asyncHandler(async (req, res) => {
 
     const taxableBase = Math.max(0, subtotal - discountAmount);
     const taxAmount = Math.round(taxableBase * (cfg.taxRatePercent / 100) * 100) / 100;
-    const totalAmount = subtotal - discountAmount + shippingFee + taxAmount;
+
+    // Loyalty points redemption (account checkouts only). Capped by the caller's
+    // balance and by the amount still payable so the total can't go negative.
+    let loyaltyPointsUsed = 0;
+    let loyaltyDiscount = 0;
+    const redeemPoints = Math.floor(Number(req.body.redeemPoints) || 0);
+    if (redeemPoints > 0 && req.user && cfg.loyaltyRedemptionRate > 0) {
+      const balance = Number(req.user.loyaltyPointsBalance || 0);
+      const payableBeforeLoyalty = subtotal - discountAmount + shippingFee + taxAmount;
+      const maxByValue = Math.floor(payableBeforeLoyalty / cfg.loyaltyRedemptionRate);
+      loyaltyPointsUsed = Math.max(0, Math.min(redeemPoints, balance, maxByValue));
+      loyaltyDiscount = Math.round(loyaltyPointsUsed * cfg.loyaltyRedemptionRate * 100) / 100;
+    }
+
+    const totalAmount = Math.max(0, subtotal - discountAmount - loyaltyDiscount + shippingFee + taxAmount);
 
     // Create main Order record
     const order = await Order.create(
@@ -279,6 +294,7 @@ const checkoutOrder = asyncHandler(async (req, res) => {
         taxAmount,
         totalAmount,
         discountAmount,
+        loyaltyPointsUsed,
         shippingFee,
         couponId,
         shippingAddressId: resolvedShippingId,
@@ -290,6 +306,22 @@ const checkoutOrder = asyncHandler(async (req, res) => {
     // Create OrderItem records linked to order
     const orderItemsData = itemsToCreate.map((item) => ({ ...item, orderId: order.id }));
     await OrderItem.bulkCreate(orderItemsData, { transaction: t });
+
+    // Debit the redeemed loyalty points now — they're committed once the order
+    // is placed (mirrors how coupon usage is incremented at checkout).
+    if (loyaltyPointsUsed > 0) {
+      await LoyaltyTransaction.create(
+        {
+          userId: req.user.id,
+          orderId: order.id,
+          points: -loyaltyPointsUsed,
+          type: "REDEEMED",
+          description: `Redeemed on order ${orderNumber}`,
+        },
+        { transaction: t }
+      );
+      await User.increment({ loyaltyPointsBalance: -loyaltyPointsUsed }, { where: { id: req.user.id }, transaction: t });
+    }
 
     // ── Payment ────────────────────────────────────────────────────────────
     // INSTANT (MOCK/CARD): completes now.  DEFERRED (COD): pays on delivery.
@@ -317,10 +349,10 @@ const checkoutOrder = asyncHandler(async (req, res) => {
     // REDIRECT: leave order PENDING.
 
     const full = await Order.findByPk(order.id, { include: orderInclude, transaction: t });
-    return { order: full, pointsEarned, provider, paymentId: payment.id };
+    return { order: full, pointsEarned, loyaltyDiscount, loyaltyPointsUsed, provider, paymentId: payment.id };
   });
 
-  const { order: placedOrder, pointsEarned, paymentId } = createdOrderDetails;
+  const { order: placedOrder, pointsEarned, loyaltyDiscount, loyaltyPointsUsed, paymentId } = createdOrderDetails;
 
   // Redirect providers → hand the client an initiation payload.
   let redirect = null;
@@ -355,7 +387,7 @@ const checkoutOrder = asyncHandler(async (req, res) => {
   return res.status(201).json(
     new ApiResponse(
       201,
-      { order: placedOrder, provider, paymentId, redirect, requiresPayment: isRedirect(provider) },
+      { order: placedOrder, provider, paymentId, redirect, requiresPayment: isRedirect(provider), pointsEarned, loyaltyDiscount, loyaltyPointsUsed },
       "Order checked out successfully"
     )
   );
@@ -605,6 +637,24 @@ const refundOrder = asyncHandler(async (req, res) => {
       );
       await User.increment(
         { loyaltyPointsBalance: -earned },
+        { where: { id: order.userId }, transaction: t }
+      );
+    }
+
+    // Give back any loyalty points the customer redeemed on this order.
+    if (order.loyaltyPointsUsed > 0 && order.userId) {
+      await LoyaltyTransaction.create(
+        {
+          userId: order.userId,
+          orderId: order.id,
+          points: order.loyaltyPointsUsed,
+          type: "ADJUSTMENT",
+          description: `Points returned on refund of order ${order.orderNumber}`,
+        },
+        { transaction: t }
+      );
+      await User.increment(
+        { loyaltyPointsBalance: order.loyaltyPointsUsed },
         { where: { id: order.userId }, transaction: t }
       );
     }
